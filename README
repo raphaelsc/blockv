@@ -18,7 +18,7 @@ Getting started
    NOTE: allow_root option requires adding 'user_allow_other' to /etc/fuse.conf
 
 3) Create a memory-based block device of 30MB:
-   truncate -s 30M ./mount/virtual_block_device;
+   truncate -s 30M ./mount_point/virtual_block_device;
 
 3) Format the memory-based block device with ext2 file system:
    mkfs.ext2 ./mount_point/virtual_block_device;
@@ -27,6 +27,6 @@ Getting started
 
 4) Mount the ext2 filesystem with:
    mkdir ./mount_point2;
-   sudo mount -t ext2 -o loop mount/virtual_block_device ./mount_point2;
+   sudo mount -t ext2 -o loop ./mount_point/virtual_block_device ./mount_point2;
 
    NOTE: ./mount_point2 is now home for a ext2 filesystem backed by memory RAM.
