@@ -1,19 +1,29 @@
-FUSE intended to provide virtual block devices which source may be either volatile memory or remote persistent storage.
+FUSE created to provide access to network (TBD) and memory based block devices.
+
+Further information about network-based block device:
+https://en.wikipedia.org/wiki/Network_block_device
 
 How to play with it?
 
-1) Compile project with: 
-   g++ `pkg-config fuse --cflags --libs` virtual-blkdev-fuse.cc -o virtual-blkdev-fuse
+1) Compile project with:
+   g++ --std=c++14 `pkg-config fuse --cflags --libs` virtual_blkdev_fuse.cc -o virtual_blkdev_fuse;
+
    NOTE: Depends on FUSE.
 
 2) Run project as follow:
-   ./virtual-blkdev-fuse -d <mount_point> -o allow_root
+   mkdir ./mount_point;
+   ./virtual_blkdev_fuse -d ./mount_point; -o allow_root;
+
    NOTE: allow_root option requires adding 'user_allow_other' to /etc/fuse.conf
 
-3) Format a file system into a virtual block device located at <mount_point>:
-   mkfs.ext2 mount/virtual_block_device
-   NOTE: virtual-blk-fuse has installed by default a virtual block device (memory based, 32MB in size).
+3) Format a virtual block device with ext2 file system:
+   mkfs.ext2 ./mount_point/virtual_block_device;
+
+   NOTE: virtual-blk-fuse has installed by default a memory-based block device of 32MB.
    TODO: Add support to create new virtual block devices with arbitrary size.
 
-4) Mount previously created ext2 file system with:
-   sudo mount -t ext2 -o loop mount/virtual_block_device <mount_point_to_fs>
+4) Mount previously created ext2 filesystem with:
+   mkdir ./mount_point2;
+   sudo mount -t ext2 -o loop mount/virtual_block_device ./mount_point2;
+
+   NOTE: ./mount_point2 is now home for a ext2 filesystem backed by memory RAM.
