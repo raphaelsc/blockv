@@ -1,0 +1,17 @@
+How to play with it?
+
+1) Compile project with: 
+   g++ `pkg-config fuse --cflags --libs` virtual-blkdev-fuse.cc -o virtual-blkdev-fuse
+   NOTE: Depends on FUSE.
+
+2) Run project as follow:
+   ./virtual-blkdev-fuse -d <mount_point> -o allow_root
+   NOTE: allow_root option requires adding 'user_allow_other' to /etc/fuse.conf
+
+3) Format a file system into a virtual block device located at <mount_point>:
+   mkfs.ext2 mount/virtual_block_device
+   NOTE: virtual-blk-fuse has installed by default a virtual block device (memory based, 32MB in size).
+   TODO: Add support to create new virtual block devices with arbitrary size.
+
+4) Mount previously created ext2 file system with:
+   sudo mount -t ext2 -o loop mount/virtual_block_device <mount_point_to_fs>
