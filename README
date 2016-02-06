@@ -7,13 +7,13 @@ Getting started
 -----
 
 1) Compile project with:
-   g++ --std=c++14 `pkg-config fuse --cflags --libs` virtual_blkdev_fuse.cc -o virtual_blkdev_fuse;
+   g++ --std=c++14 `pkg-config fuse --cflags --libs` blockv_fuse.cc -o blockv_fuse;
 
    NOTE: Depends on FUSE.
 
 2) Run project as follow:
    mkdir ./mount_point;
-   ./virtual_blkdev_fuse -d ./mount_point; -o allow_root;
+   ./blockv_fuse -d ./mount_point; -o allow_root;
 
    NOTE: allow_root option requires adding 'user_allow_other' to /etc/fuse.conf
 
