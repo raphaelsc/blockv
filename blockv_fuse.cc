@@ -72,12 +72,12 @@ public:
     virtual size_t write(const char *buf, size_t size, off_t offset) { return 0; };
 };
 
-struct virtual_blockdev_fs {
+struct blockv_fuse {
 private:
     std::unordered_map<std::string, virtual_block_device*> _block_devices;
 
 public:
-    ~virtual_blockdev_fs() {
+    ~blockv_fuse() {
         for (auto it : _block_devices) {
             delete it.second;
         }
@@ -113,15 +113,15 @@ public:
     }
 };
 
-static struct virtual_blockdev_fs* get_filesystem_context() {
+static struct blockv_fuse* get_filesystem_context() {
     struct fuse_context* context = fuse_get_context();
-    return (struct virtual_blockdev_fs*) context->private_data;
+    return (struct blockv_fuse*) context->private_data;
 }
 
 static int fs_getattr(const char *path, struct stat *stbuf)
 {
     int res = 0;
-    struct virtual_blockdev_fs* fs = get_filesystem_context();
+    struct blockv_fuse* fs = get_filesystem_context();
 
     memset(stbuf, 0, sizeof(struct stat));
     if (strcmp(path, "/") == 0) {
@@ -146,7 +146,7 @@ static int fs_getattr(const char *path, struct stat *stbuf)
 static int fs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
         off_t offset, struct fuse_file_info *fi)
 {
-    struct virtual_blockdev_fs* fs = get_filesystem_context();
+    struct blockv_fuse* fs = get_filesystem_context();
 
     if (strcmp(path, "/") != 0)
             return -ENOENT;
@@ -162,7 +162,7 @@ static int fs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 }
 
 static int fs_open(const char *path, struct fuse_file_info *fi) {
-    struct virtual_blockdev_fs* fs = get_filesystem_context();
+    struct blockv_fuse* fs = get_filesystem_context();
 
     if (!fs->block_device_exists(path)) {
         return -ENOENT;
@@ -172,7 +172,7 @@ static int fs_open(const char *path, struct fuse_file_info *fi) {
 }
 
 static int fs_create(const char *path, mode_t mode, struct fuse_file_info *fi) {
-    struct virtual_blockdev_fs* fs = get_filesystem_context();
+    struct blockv_fuse* fs = get_filesystem_context();
     bool exclusive = fi->flags & O_EXCL; // TODO: CHECK if it's correct
 
     if (fs->block_device_exists(path)) {
@@ -187,7 +187,7 @@ static int fs_create(const char *path, mode_t mode, struct fuse_file_info *fi) {
 }
 
 static int fs_symlink(const char *target, const char *linkpath) {
-    struct virtual_blockdev_fs* fs = get_filesystem_context();
+    struct blockv_fuse* fs = get_filesystem_context();
 
     if (!network_block_device::is_target_valid(target)) {
         return -ENOENT;
@@ -205,7 +205,7 @@ static int fs_symlink(const char *target, const char *linkpath) {
 }
 
 static int fs_readlink(const char *path, char *buf, size_t size) {
-    struct virtual_blockdev_fs* fs = get_filesystem_context();
+    struct blockv_fuse* fs = get_filesystem_context();
 
     if (!fs->block_device_exists(path)) {
         return -ENOENT;
@@ -227,7 +227,7 @@ static int fs_readlink(const char *path, char *buf, size_t size) {
 }
 
 static int fs_truncate(const char *path, off_t size) {
-    struct virtual_blockdev_fs* fs = get_filesystem_context();
+    struct blockv_fuse* fs = get_filesystem_context();
 
     if (!fs->block_device_exists(path)) {
         return -ENOENT;
@@ -257,7 +257,7 @@ static int fs_truncate(const char *path, off_t size) {
 
 static int rw(const char *path, const void* buf, size_t size, off_t offset,
         std::function<size_t(virtual_block_device*, const void*, size_t, off_t)> operation) {
-    struct virtual_blockdev_fs* fs = get_filesystem_context();
+    struct blockv_fuse* fs = get_filesystem_context();
     auto block_device = fs->get_block_device(path);
 
     if (!block_device) {
@@ -290,7 +290,7 @@ static int fs_write(const char *path, const char *buf, size_t size, off_t offset
 }
 
 static struct fuse_operations fs_oper;
-static struct virtual_blockdev_fs fs;
+static struct blockv_fuse fs;
 
 int main(int argc, char *argv[])
 {
