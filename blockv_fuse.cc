@@ -55,6 +55,18 @@ public:
 };
 
 struct network_block_device : public virtual_block_device {
+private:
+    std::string _target;
+public:
+    network_block_device(const char *target)
+        : _target(std::string(target)) {}
+
+    static bool is_target_valid(const char *path) { return true; }
+
+    const std::string& read_target() {
+        return _target;
+    }
+
     virtual size_t size() { return 0; }
     virtual size_t read(char *buf, size_t size, off_t offset) { return 0; }
     virtual size_t write(const char *buf, size_t size, off_t offset) { return 0; };
@@ -76,8 +88,8 @@ public:
         _block_devices.emplace(std::string(path), new memory_based_block_device());
     }
 
-    void add_network_based_block_device(const char *path, const char *linkpath) {
-        _block_devices.emplace(std::string(path), new network_block_device());
+    void add_network_based_block_device(const char *path, const char *target) {
+        _block_devices.emplace(std::string(path), new network_block_device(target));
     }
 
     void remove_block_device(const char *path) {
@@ -120,7 +132,9 @@ static int fs_getattr(const char *path, struct stat *stbuf)
         if (!block_device) {
             res = -ENOENT;
         } else {
-            stbuf->st_mode = S_IFREG | 0644;
+            bool is_memory_based = dynamic_cast<memory_based_block_device*>(block_device);
+
+            stbuf->st_mode = ((is_memory_based) ? S_IFREG : S_IFLNK) | 0644;
             stbuf->st_nlink = 1;
             stbuf->st_size = block_device->size();
         }
@@ -172,8 +186,52 @@ static int fs_create(const char *path, mode_t mode, struct fuse_file_info *fi) {
     return 0;
 }
 
+static int fs_symlink(const char *target, const char *linkpath) {
+    struct virtual_blockdev_fs* fs = get_filesystem_context();
+
+    if (!network_block_device::is_target_valid(target)) {
+        return -ENOENT;
+    }
+
+    if (fs->block_device_exists(linkpath)) {
+        return -EEXIST;
+    } else {
+        // TODO: create connection object here (using a static method of network_block_device)
+        // to check connectivity and pass it to add_network_based_block_device.
+        fs->add_network_based_block_device(linkpath, target);
+    }
+
+    return 0;
+}
+
+static int fs_readlink(const char *path, char *buf, size_t size) {
+    struct virtual_blockdev_fs* fs = get_filesystem_context();
+
+    if (!fs->block_device_exists(path)) {
+        return -ENOENT;
+    }
+
+    // Readlink is only supported by network_based_block_device.
+    network_block_device* block_device = dynamic_cast<network_block_device*>(fs->get_block_device(path));
+    if (!block_device) {
+        return -EPERM;
+    }
+
+    const std::string& target = block_device->read_target();
+    size_t to_write = std::min(target.size(), size - 1);
+    memcpy(buf, target.c_str(), to_write);
+    // The buffer should be filled with a null terminated string.
+    buf[to_write] = '\0';
+
+    return 0;
+}
+
 static int fs_truncate(const char *path, off_t size) {
     struct virtual_blockdev_fs* fs = get_filesystem_context();
+
+    if (!fs->block_device_exists(path)) {
+        return -ENOENT;
+    }
 
     // Truncate is only supported by memory_based_block_device.
     memory_based_block_device* block_device = dynamic_cast<memory_based_block_device*>(fs->get_block_device(path));
@@ -240,6 +298,8 @@ int main(int argc, char *argv[])
     fs_oper.readdir = fs_readdir;
     fs_oper.open = fs_open;
     fs_oper.create = fs_create;
+    fs_oper.symlink = fs_symlink;
+    fs_oper.readlink = fs_readlink;
     fs_oper.truncate = fs_truncate;
     fs_oper.read = fs_read;
     fs_oper.write = fs_write;

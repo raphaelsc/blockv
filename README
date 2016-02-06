@@ -13,7 +13,7 @@ Getting started
 
 2) Run project as follow:
    mkdir ./mount_point;
-   ./blockv_fuse -d ./mount_point; -o allow_root;
+   ./blockv_fuse -d ./mount_point -o allow_root;
 
    NOTE: allow_root option requires adding 'user_allow_other' to /etc/fuse.conf
 
