@@ -1,3 +1,5 @@
+FUSE intended to provide virtual block devices which source may be either volatile memory or remote persistent storage.
+
 How to play with it?
 
 1) Compile project with: 
