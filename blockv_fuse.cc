@@ -12,6 +12,7 @@
 #include <string.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <stdarg.h>
 #include <unordered_map>
 #include <functional>
 
@@ -116,6 +117,18 @@ public:
 static struct blockv_fuse* get_filesystem_context() {
     struct fuse_context* context = fuse_get_context();
     return (struct blockv_fuse*) context->private_data;
+}
+
+int log(const char *format, ...) {
+    va_list args;
+    va_start(args, format);
+
+    char buffer[256];
+    snprintf(buffer, 256, "blockv_fuse log: %s\n", format);
+    int ret = vprintf(buffer, args);
+
+    va_end(args);
+    return ret;
 }
 
 static int fs_getattr(const char *path, struct stat *stbuf)
@@ -269,7 +282,12 @@ static int rw(const char *path, const void* buf, size_t size, off_t offset,
         if (offset + size > len) {
             size = len - offset;
         }
-        size = operation(block_device, buf, size, offset);
+        size_t ret = operation(block_device, buf, size, offset);
+        if (ret != size) {
+            log("Failed to r/w %ld bytes at offset %ld of %s", size, offset, path);
+            return -EIO;
+        }
+        size = ret;
     } else {
         size = 0;
     }
@@ -304,5 +322,6 @@ int main(int argc, char *argv[])
     fs_oper.read = fs_read;
     fs_oper.write = fs_write;
 
+    log("Initializing fuse...");
     return fuse_main(argc, argv, &fs_oper, (void*) &fs);
 }
