@@ -3,7 +3,8 @@ FUSE created to provide access to network (TBD) and memory based block devices.
 Further information about network-based block device:
 https://en.wikipedia.org/wiki/Network_block_device
 
-How to play with it?
+Getting started
+-----
 
 1) Compile project with:
    g++ --std=c++14 `pkg-config fuse --cflags --libs` virtual_blkdev_fuse.cc -o virtual_blkdev_fuse;
@@ -16,13 +17,15 @@ How to play with it?
 
    NOTE: allow_root option requires adding 'user_allow_other' to /etc/fuse.conf
 
-3) Format a virtual block device with ext2 file system:
+3) Create a memory-based block device of 30MB:
+   truncate -s 30M ./mount/virtual_block_device;
+
+3) Format the memory-based block device with ext2 file system:
    mkfs.ext2 ./mount_point/virtual_block_device;
 
-   NOTE: virtual-blk-fuse has installed by default a memory-based block device of 32MB.
-   TODO: Add support to create new virtual block devices with arbitrary size.
+   NOTE: ext2 filesystem was chosen arbitrarily. Any other file system supported by Linux should work as fine.
 
-4) Mount previously created ext2 filesystem with:
+4) Mount the ext2 filesystem with:
    mkdir ./mount_point2;
    sudo mount -t ext2 -o loop mount/virtual_block_device ./mount_point2;
 

@@ -24,28 +24,32 @@ struct virtual_block_device {
 };
 
 struct memory_based_block_device : public virtual_block_device {
-    void *block_device_content = nullptr;
-    size_t block_device_size = 0;
+private:
+    void* _block_device_content = nullptr;
+    size_t _block_device_size = 0;
 
-    memory_based_block_device() {
-        block_device_content = new char[32*1024*1024];
-        block_device_size = 32*1024*1024;
+public:
+    ~memory_based_block_device() {
+        if (_block_device_content) {
+            delete (char *)_block_device_content;
+        }
     }
 
-    ~memory_based_block_device() {
-        delete (char *)block_device_content;
+    void set_block_device_content(void* block_device_content, size_t block_device_size) {
+        _block_device_content = block_device_content;
+        _block_device_size = block_device_size;
     }
 
     virtual size_t size() {
-        return block_device_size;
+        return _block_device_size;
     }
 
     virtual size_t read(char *buf, size_t size, off_t offset) {
-        memcpy(buf, (const char *)block_device_content + offset, size);
+        memcpy(buf, (const char *)_block_device_content + offset, size);
         return size;
     }
     virtual size_t write(const char *buf, size_t size, off_t offset) {
-        memcpy((char *)block_device_content + offset, buf, size);
+        memcpy((char *)_block_device_content + offset, buf, size);
         return size;
     }
 };
@@ -126,7 +130,7 @@ static int fs_getattr(const char *path, struct stat *stbuf)
 }
 
 static int fs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
-			 off_t offset, struct fuse_file_info *fi)
+        off_t offset, struct fuse_file_info *fi)
 {
     struct virtual_blockdev_fs* fs = get_filesystem_context();
 
@@ -154,7 +158,43 @@ static int fs_open(const char *path, struct fuse_file_info *fi) {
 }
 
 static int fs_create(const char *path, mode_t mode, struct fuse_file_info *fi) {
-    return fs_open(path, fi);
+    struct virtual_blockdev_fs* fs = get_filesystem_context();
+    bool exclusive = fi->flags & O_EXCL; // TODO: CHECK if it's correct
+
+    if (fs->block_device_exists(path)) {
+        if (exclusive) {
+            return -EEXIST;
+        }
+    } else {
+        fs->add_memory_based_block_device(path);
+    }
+
+    return 0;
+}
+
+static int fs_truncate(const char *path, off_t size) {
+    struct virtual_blockdev_fs* fs = get_filesystem_context();
+
+    // Truncate is only supported by memory_based_block_device.
+    memory_based_block_device* block_device = dynamic_cast<memory_based_block_device*>(fs->get_block_device(path));
+    if (!block_device) {
+        return -EPERM;
+    }
+
+    // Resize isn't allowed.
+    if (block_device->size()) {
+        return -EPERM;
+    }
+
+    void* block_device_content;
+    try {
+        block_device_content = new char[size];
+    } catch (...) {
+        return -EIO;
+    }
+    block_device->set_block_device_content(block_device_content, size);
+
+    return 0;
 }
 
 static int rw(const char *path, const void* buf, size_t size, off_t offset,
@@ -196,12 +236,11 @@ static struct virtual_blockdev_fs fs;
 
 int main(int argc, char *argv[])
 {
-    fs.add_memory_based_block_device("/virtual_block_device");
-
     fs_oper.getattr = fs_getattr;
     fs_oper.readdir = fs_readdir;
     fs_oper.open = fs_open;
     fs_oper.create = fs_create;
+    fs_oper.truncate = fs_truncate;
     fs_oper.read = fs_read;
     fs_oper.write = fs_write;
 
