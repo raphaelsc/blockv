@@ -167,8 +167,9 @@ static int fs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 {
     struct blockv_fuse* fs = get_filesystem_context();
 
-    if (strcmp(path, "/") != 0)
-            return -ENOENT;
+    if (strcmp(path, "/") != 0) {
+        return -ENOENT;
+    }
 
     filler(buf, ".", NULL, 0);
     filler(buf, "..", NULL, 0);
