@@ -144,8 +144,8 @@ static int fs_getattr(const char *path, struct stat *stbuf)
 
     memset(stbuf, 0, sizeof(struct stat));
     if (strcmp(path, "/") == 0) {
-            stbuf->st_mode = S_IFDIR | 0755;
-            stbuf->st_nlink = 2;
+        stbuf->st_mode = S_IFDIR | 0755;
+        stbuf->st_nlink = 2;
     } else {
         auto block_device = fs->get_block_device(path);
         if (!block_device) {
