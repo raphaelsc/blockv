@@ -265,7 +265,7 @@ static int fs_truncate(const char *path, off_t size) {
     }
 
     // Resize isn't allowed.
-    if (block_device->size()) {
+    if (block_device->size() != 0) {
         return -EPERM;
     }
 
