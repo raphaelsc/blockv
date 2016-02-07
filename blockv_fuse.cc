@@ -293,21 +293,20 @@ static int rw(const char *path, const void* buf, size_t size, off_t offset, bool
     }
 
     size_t len = block_device->size();
+    int ret = 0;
+
     if (offset < len) {
         if (offset + size > len) {
             size = len - offset;
         }
-        size_t ret = operation(block_device, buf, size, offset);
+        ret = operation(block_device, buf, size, offset);
         if (ret != size) {
             log("Failed to %s %ld bytes at offset %ld of %s", (read) ? "read" : "write", size, offset, path);
             return -EIO;
         }
-        size = ret;
-    } else {
-        size = 0;
     }
 
-    return size;
+    return ret;
 }
 
 static int fs_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi) {
