@@ -19,6 +19,7 @@
 struct virtual_block_device {
     virtual ~virtual_block_device(){}
 
+    virtual bool read_only() = 0;
     virtual size_t size() = 0;
     virtual size_t read(char *buf, size_t size, off_t offset) = 0;
     virtual size_t write(const char *buf, size_t size, off_t offset) = 0;
@@ -39,6 +40,10 @@ public:
     void set_block_device_content(void* block_device_content, size_t block_device_size) {
         _block_device_content = block_device_content;
         _block_device_size = block_device_size;
+    }
+
+    virtual bool read_only() {
+        return false;
     }
 
     virtual size_t size() {
@@ -68,6 +73,7 @@ public:
         return _target;
     }
 
+    virtual bool read_only() { return false; }
     virtual size_t size() { return 0; }
     virtual size_t read(char *buf, size_t size, off_t offset) { return 0; }
     virtual size_t write(const char *buf, size_t size, off_t offset) { return 0; };
@@ -147,7 +153,7 @@ static int fs_getattr(const char *path, struct stat *stbuf)
         } else {
             bool is_memory_based = dynamic_cast<memory_based_block_device*>(block_device);
 
-            stbuf->st_mode = ((is_memory_based) ? S_IFREG : S_IFLNK) | 0644;
+            stbuf->st_mode = ((is_memory_based) ? S_IFREG : S_IFLNK) | (block_device->read_only() ? 0444 : 0644);
             stbuf->st_nlink = 1;
             stbuf->st_size = block_device->size();
         }
@@ -176,9 +182,14 @@ static int fs_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
 
 static int fs_open(const char *path, struct fuse_file_info *fi) {
     struct blockv_fuse* fs = get_filesystem_context();
+    auto block_device = fs->get_block_device(path);
 
-    if (!fs->block_device_exists(path)) {
+    if (!block_device) {
         return -ENOENT;
+    }
+
+    if (block_device->read_only() && ((fi->flags & 3) != O_RDONLY)) {
+        return -EACCES;
     }
 
     return 0;
@@ -268,13 +279,17 @@ static int fs_truncate(const char *path, off_t size) {
     return 0;
 }
 
-static int rw(const char *path, const void* buf, size_t size, off_t offset,
+static int rw(const char *path, const void* buf, size_t size, off_t offset, bool read,
         std::function<size_t(virtual_block_device*, const void*, size_t, off_t)> operation) {
     struct blockv_fuse* fs = get_filesystem_context();
     auto block_device = fs->get_block_device(path);
 
     if (!block_device) {
         return -ENOENT;
+    }
+
+    if (!read && block_device->read_only()) {
+        return -EBADF;
     }
 
     size_t len = block_device->size();
@@ -284,7 +299,7 @@ static int rw(const char *path, const void* buf, size_t size, off_t offset,
         }
         size_t ret = operation(block_device, buf, size, offset);
         if (ret != size) {
-            log("Failed to r/w %ld bytes at offset %ld of %s", size, offset, path);
+            log("Failed to %s %ld bytes at offset %ld of %s", (read) ? "read" : "write", size, offset, path);
             return -EIO;
         }
         size = ret;
@@ -296,13 +311,13 @@ static int rw(const char *path, const void* buf, size_t size, off_t offset,
 }
 
 static int fs_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi) {
-    return rw(path, buf, size, offset, [] (auto block_device, const void *buf, size_t size, off_t offset) {
+    return rw(path, buf, size, offset, true, [] (auto block_device, const void *buf, size_t size, off_t offset) {
         return block_device->read((char *)buf, size, offset);
     });
 }
 
 static int fs_write(const char *path, const char *buf, size_t size, off_t offset, struct fuse_file_info *fi) {
-    return rw(path, buf, size, offset, [] (auto block_device, const void *buf, size_t size, off_t offset) {
+    return rw(path, buf, size, offset, false, [] (auto block_device, const void *buf, size_t size, off_t offset) {
         return block_device->write((const char *)buf, size, offset);
     });
 }
