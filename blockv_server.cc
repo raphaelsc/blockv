@@ -131,9 +131,11 @@ int main()
                 memcpy(buf, write_request->buf, write_request->size);
 
                 int64_t remaining_bytes = write_request->size - buf_size_in_this_message;
+                uint32_t offset = buf_size_in_this_message;
                 while (remaining_bytes > 0) {
-                    ret = read(comm_fd, buf + buf_size_in_this_message, remaining_bytes);
+                    ret = read(comm_fd, buf + offset, remaining_bytes);
                     remaining_bytes -= ret;
+                    offset += ret;
                 }
                 assert(remaining_bytes == 0);
 
