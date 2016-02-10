@@ -113,6 +113,7 @@ int main()
                 write(comm_fd, (const void*)buf, ret);
                 delete buf;
             } else if (request->request == blockv_requests::WRITE) {
+                // TODO: ignore write request if device is read-only.
                 blockv_write_request* write_request = (blockv_write_request*) request;
                 blockv_write_request::to_host(*write_request);
 
