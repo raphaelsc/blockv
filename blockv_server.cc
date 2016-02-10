@@ -128,7 +128,7 @@ int main()
                 // Buffer may be fragmented in multiple messages, so we may need to perform
                 // multiple reads to get the complete buffer.
                 uint32_t buf_size_in_this_message = ret - blockv_write_request::serialized_size(0);
-                memcpy(buf, write_request->buf, write_request->size);
+                memcpy(buf, write_request->buf, buf_size_in_this_message);
 
                 int64_t remaining_bytes = write_request->size - buf_size_in_this_message;
                 uint32_t offset = buf_size_in_this_message;
