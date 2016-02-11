@@ -99,19 +99,21 @@ int main()
                 blockv_read_request* read_request = (blockv_read_request*) request;
                 blockv_read_request::to_host(*read_request);
 
-                char* buf;
-                try {
-                    buf = new char[read_request->size];
-                } catch (...) {
-                    printf("Failed to allocate %u bytes to read request\n", read_request->size);
+                blockv_read_response* read_response = blockv_read_response::to_network(read_request->size);
+                if (!read_response) {
+                    printf("Failed to allocate data to fulfill read request\n");
                     break;
                 }
 
-                ret = dev.read(buf, read_request->size, read_request->offset);
-                printf("Read %u bytes at offset %u: \'%.*s\'\n", read_request->size, read_request->offset, ret, buf);
+                ret = dev.read(read_response->buf, read_request->size, read_request->offset);
+                printf("Read %u bytes at offset %u: \'%.*s\'\n", read_request->size, read_request->offset, ret, read_response->buf);
 
-                write(comm_fd, (const void*)buf, ret);
-                delete buf;
+                // adjust size of read response because dev.read() may return
+                // less data than what read request asked for.
+                read_response->set_size_to_network(ret);
+                write(comm_fd, (const void*)read_response, read_response->serialized_size());
+
+                delete read_response;
             } else if (request->request == blockv_requests::WRITE) {
                 // TODO: ignore write request if device is read-only.
                 blockv_write_request* write_request = (blockv_write_request*) request;

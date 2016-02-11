@@ -5,7 +5,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <arpa/inet.h>
-#include "blockv_protocol.hh"
+#include "../blockv_protocol.hh"
 #include <assert.h>
 #include <iostream>
 #include <errno.h>
@@ -46,8 +46,9 @@ int main(int argc,char **argv)
     bzero(recvline, sizeof(recvline));
     write(sockfd, (const void*)&read_request_to_network, read_request_to_network.serialized_size());
     ret = read(sockfd,recvline,100);
-    std::cout << ret << std::endl;
-    printf("%.*s\n", 10, recvline);
+    blockv_read_response* read_response = (blockv_read_response*) recvline;
+    blockv_read_response::to_host(*read_response);
+    printf("read: %u, %.*s\n", read_response->size, read_response->size, read_response->buf);
 
     printf("sizeof(blockv_write_request): %ld\n", sizeof(blockv_write_request));
 
@@ -57,11 +58,12 @@ int main(int argc,char **argv)
     write(sockfd, (const void*)write_request, write_request->serialized_size());
     delete (char *) write_request;
 
-
     bzero(recvline, sizeof(recvline));
     write(sockfd, (const void*)&read_request_to_network, read_request_to_network.serialized_size());
     ret = read(sockfd,recvline,100);
-    printf("\n%.*s\n", 10, recvline);
+    read_response = (blockv_read_response*) recvline;
+    blockv_read_response::to_host(*read_response);
+    printf("\nread: %u, %.*s\n", read_response->size, read_response->size, read_response->buf);
 
     blockv_request finish;
     finish.request = blockv_requests::FINISH;

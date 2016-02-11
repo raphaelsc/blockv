@@ -74,6 +74,52 @@ struct blockv_read_request {
     }
 } __attribute__((packed));
 
+struct blockv_read_response {
+    uint32_t size; // bytes read
+    char buf[];
+
+    blockv_read_response() = delete;
+
+    static size_t serialized_size(uint32_t buf_size) {
+        return sizeof(uint8_t) + sizeof(uint32_t) + sizeof(uint32_t) + buf_size;
+    }
+
+    size_t serialized_size() {
+        return serialized_size(ntohl(size));
+    }
+
+    void set_size_to_network(uint32_t new_size) {
+        size = htonl(new_size);
+    }
+
+    // Used by client to determine the maximum size of read response for a
+    // given read request.
+    static uint32_t predict_read_response_size(blockv_read_request& read_request) {
+        return sizeof(uint32_t) + ntohl(read_request.size);
+    }
+
+    // Allocates a read response that can store up to buf_size bytes.
+    // It's expected that caller will store its data in this->buf and call
+    // this->set_size_to_network() to adjust size of response.
+    static blockv_read_response* to_network(uint32_t buf_size) {
+        size_t bytes_to_allocate = serialized_size(buf_size);
+        blockv_read_response* read_response;
+
+        try {
+            read_response = (blockv_read_response*) new char[bytes_to_allocate];
+        } catch (...) {
+            return nullptr;
+        }
+
+        read_response->size = htonl(buf_size);
+        return read_response;
+    }
+
+    static void to_host(blockv_read_response& read_response) {
+        read_response.size = ntohl(read_response.size);
+    }
+} __attribute__((packed));
+
 struct blockv_write_request {
     uint8_t request;
     uint32_t size;
@@ -111,6 +157,12 @@ struct blockv_write_request {
         write_request.size = ntohl(write_request.size);
         write_request.offset = ntohl(write_request.offset);
     }
+} __attribute__((packed));
+
+
+struct blockv_write_response {
+    // TODO: implement
+    uint32_t size; // bytes written
 } __attribute__((packed));
 
 struct blockv_request {
