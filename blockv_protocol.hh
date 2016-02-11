@@ -81,7 +81,7 @@ struct blockv_read_response {
     blockv_read_response() = delete;
 
     static size_t serialized_size(uint32_t buf_size) {
-        return sizeof(uint8_t) + sizeof(uint32_t) + sizeof(uint32_t) + buf_size;
+        return sizeof(uint32_t) + buf_size;
     }
 
     size_t serialized_size() {
@@ -95,7 +95,7 @@ struct blockv_read_response {
     // Used by client to determine the maximum size of read response for a
     // given read request.
     static uint32_t predict_read_response_size(blockv_read_request& read_request) {
-        return sizeof(uint32_t) + ntohl(read_request.size);
+        return serialized_size(ntohl(read_request.size));
     }
 
     // Allocates a read response that can store up to buf_size bytes.
