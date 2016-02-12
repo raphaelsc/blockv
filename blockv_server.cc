@@ -91,6 +91,10 @@ int main()
         for (;;) {
             bzero(str, sizeof(str));
             ret = read(comm_fd, str, sizeof(str));
+            if (ret == 0) {
+                printf("Client disconnected.\n");
+                break;
+            }
 
             blockv_request* request = (blockv_request*) str;
             assert(request->is_valid());
