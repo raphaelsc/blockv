@@ -13,8 +13,11 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <stdarg.h>
+#include <unistd.h>
 #include <unordered_map>
 #include <functional>
+#include <mutex>
+#include "blockv_protocol.hh"
 
 struct virtual_block_device {
     virtual ~virtual_block_device(){}
@@ -60,22 +63,125 @@ public:
     }
 };
 
+// Contains information about connection to a blockv server.
+struct blockv_server_connection {
+    blockv_server_info* server_info = nullptr;
+    int sockfd = -1;
+};
+
 struct network_block_device : public virtual_block_device {
 private:
+    blockv_server_connection _server_connection;
     std::string _target;
+    std::mutex _mutex;
 public:
-    network_block_device(const char *target)
-        : _target(std::string(target)) {}
+    network_block_device(blockv_server_connection server_connection, const char *target)
+        : _server_connection(server_connection)
+        , _target(std::string(target)) {}
+
+    ~network_block_device() {
+        if (_server_connection.server_info) {
+            delete _server_connection.server_info;
+        }
+        if (_server_connection.sockfd != -1) {
+            close(_server_connection.sockfd);
+        }
+    }
 
     static bool is_target_valid(const char *path) { return true; }
+
+    static int connect_to_blockv_server(blockv_server_connection& server_connection, const char *target) {
+        int sockfd, ret;
+        struct sockaddr_in servaddr;
+
+        sockfd = socket(AF_INET,SOCK_STREAM,0);
+        if (sockfd == -1) {
+            perror("socket");
+            return -1;
+        }
+        memset(&servaddr, 0, sizeof servaddr);
+        servaddr.sin_family=AF_INET;
+        // FIXME: use target later to determine ip and port; ip and port are hardcoded by the time being.
+        servaddr.sin_port=htons(22000);
+        inet_pton(AF_INET, "127.0.0.1", &(servaddr.sin_addr));
+
+        ret = connect(sockfd,(struct sockaddr *)&servaddr,sizeof(servaddr));
+        if (ret == -1) {
+            perror("connect");
+            close(sockfd);
+            return -1;
+        }
+
+        size_t blockv_server_info_size = blockv_server_info::serialized_size();
+        char *buf = nullptr;
+        try {
+            buf = new char[blockv_server_info_size];
+        } catch(...) {
+            close(sockfd);
+            return -1;
+        }
+        ret = ::read(sockfd, buf, blockv_server_info_size);
+        if (ret != blockv_server_info_size) {
+            close(sockfd);
+            delete buf;
+            return -1;
+        }
+
+        blockv_server_info* server_info = (blockv_server_info*) buf;
+        blockv_server_info::to_host(*server_info);
+        if (!server_info->is_valid()) {
+            close(sockfd);
+            delete buf;
+            return -1;
+        }
+        server_connection.server_info = server_info;
+        server_connection.sockfd = sockfd;
+
+        return 0;
+    }
 
     const std::string& read_target() {
         return _target;
     }
 
-    virtual bool read_only() { return false; }
-    virtual size_t size() { return 0; }
-    virtual size_t read(char *buf, size_t size, off_t offset) { return 0; }
+    virtual bool read_only() {
+        return _server_connection.server_info->read_only;
+    }
+    virtual size_t size() {
+        return _server_connection.server_info->device_size;
+    }
+    virtual size_t read(char *buf, size_t size, off_t offset) {
+        // TODO: avoid this lock somehow. that's needed for response to correspond the request issued to the server.
+        std::lock_guard<std::mutex> lock(_mutex);
+        int ret;
+        blockv_read_request read_request_to_network = blockv_read_request::to_network(size, offset);
+
+        size_t response_size = blockv_read_response::predict_read_response_size(read_request_to_network);
+        char *response_buf = nullptr;
+        try {
+            response_buf = new char[response_size];
+        } catch(...) {
+            return 0;
+        }
+        memset(response_buf, 0, response_size);
+
+        ret = ::write(_server_connection.sockfd, (const void*)&read_request_to_network, read_request_to_network.serialized_size());
+        // TODO: check for return of write.
+        ret = ::read(_server_connection.sockfd, response_buf, response_size);
+        if (ret != response_size) {
+            delete response_buf;
+            return 0;
+        }
+
+        blockv_read_response* read_response = (blockv_read_response*) response_buf;
+        blockv_read_response::to_host(*read_response);
+        if (read_response->size != size) {
+            delete response_buf;
+            return 0;
+        }
+        memcpy(buf, (const char *)read_response->buf, read_response->size);
+        return read_response->size;
+    }
     virtual size_t write(const char *buf, size_t size, off_t offset) { return 0; };
 };
 
@@ -95,8 +201,8 @@ public:
         _block_devices.emplace(std::string(path), new memory_based_block_device());
     }
 
-    void add_network_based_block_device(const char *path, const char *target) {
-        _block_devices.emplace(std::string(path), new network_block_device(target));
+    void add_network_based_block_device(const char *path, blockv_server_connection server_connection, const char *target) {
+        _block_devices.emplace(std::string(path), new network_block_device(server_connection, target));
     }
 
     void remove_block_device(const char *path) {
@@ -153,7 +259,7 @@ static int fs_getattr(const char *path, struct stat *stbuf)
         } else {
             bool is_memory_based = dynamic_cast<memory_based_block_device*>(block_device);
 
-            stbuf->st_mode = ((is_memory_based) ? S_IFREG : S_IFLNK) | (block_device->read_only() ? 0444 : 0644);
+            stbuf->st_mode = ((is_memory_based) ? S_IFREG : S_IFREG) | (block_device->read_only() ? 0444 : 0644);
             stbuf->st_nlink = 1;
             stbuf->st_size = block_device->size();
         }
@@ -221,9 +327,12 @@ static int fs_symlink(const char *target, const char *linkpath) {
     if (fs->block_device_exists(linkpath)) {
         return -EEXIST;
     } else {
-        // TODO: create connection object here (using a static method of network_block_device)
-        // to check connectivity and pass it to add_network_based_block_device.
-        fs->add_network_based_block_device(linkpath, target);
+        blockv_server_connection server_connection;
+        if (network_block_device::connect_to_blockv_server(server_connection, target) == -1) {
+            return -EIO;
+        }
+
+        fs->add_network_based_block_device(linkpath, server_connection, target);
     }
 
     return 0;

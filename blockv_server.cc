@@ -6,60 +6,134 @@
  */
 
 #include <sys/types.h>
+#include <sys/stat.h>
 #include <sys/socket.h>
+#include <fcntl.h>
 #include <netdb.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
-#include "blockv_protocol.hh"
+#include <errno.h>
 #include <assert.h>
+#include <stdlib.h>
+#include <utility>
+#include <memory>
+#include "blockv_protocol.hh"
 
-struct fake_device {
-    char data[11] = "hello sir!";
-    size_t len = 10;
+struct pseudo_block_device {
+private:
+    int _fd;
+    uint32_t _pseudo_block_device_size;
 
-    fake_device() = default;
+    uint32_t get_actual_size(uint32_t size, uint32_t offset) const {
+        uint32_t actual_size = 0;
+        if (offset < _pseudo_block_device_size) {
+            if (offset + size > _pseudo_block_device_size) {
+                size = _pseudo_block_device_size - offset;
+            }
+            actual_size = size;
+        }
+        return actual_size;
+    }
+public:
+    pseudo_block_device() = delete;
+    pseudo_block_device(int fd, uint32_t size)
+        : _fd(fd)
+        , _pseudo_block_device_size(size) {}
+    ~pseudo_block_device() {
+        printf("Closing disk image...\n");
+        close(_fd);
+    }
 
-    int read(char* buf, size_t size, off_t offset) {
+    bool read_only() const {
+        // FIXME: test later with write support;
+        return true;
+    }
+
+    uint32_t size() const {
+        return _pseudo_block_device_size;
+    }
+
+    int read(char* buf, uint32_t size, uint32_t offset) {
         int ret = 0;
 
-        if (offset < len) {
-            if (offset + size > len) {
-                size = len - offset;
-            }
-            memcpy(buf, (const char *)data + offset, size);
-            ret = size;
+        size = get_actual_size(size, offset);
+        ret = pread(_fd, buf, size, offset);
+        if (ret == -1) {
+            perror("pread");
+            ret = 0;
         }
-
         return ret;
     }
 
-    int write(const char* buf, size_t size, off_t offset) {
+    int write(const char* buf, uint32_t size, uint32_t offset) {
         int ret = 0;
 
-        if (offset < len) {
-            if (offset + size > len) {
-                size = len - offset;
-            }
-            memcpy((char *)data + offset, buf, size);
-            ret = size;
+        size = get_actual_size(size, offset);
+        ret = pwrite(_fd, buf, size, offset);
+        if (ret == -1) {
+            perror("pwrite");
+            ret = 0;
         }
-
         return ret;
     }
 };
 
-int main()
-{
-    char str[4096];
-    int listen_fd, comm_fd, ret;
+static std::unique_ptr<struct pseudo_block_device> setup_pseudo_block_device(const char *pseudo_block_device_path) {
+    int pseudo_block_device_fd = -1;
+    uint32_t pseudo_block_device_size = 0; // TODO: extend to uint64_t; need protocol support.
 
+    printf("Disk image to be used: %s\n", pseudo_block_device_path);
+
+    struct stat sb;
+    if (stat(pseudo_block_device_path, &sb) == -1) {
+        printf("Unable to get status of the file %s: %s\n", pseudo_block_device_path, strerror(errno));
+        exit(1);
+    }
+
+    switch (sb.st_mode & S_IFMT) {
+    case S_IFREG:
+        break;
+    case S_IFBLK:
+        printf("WARNING: It's not safe to use block device. Use a disk image instead.\n");
+    default:
+        printf("Only regular file is allowed at the moment!\n");
+        exit(1);
+    }
+
+    // TODO: we should probably use flock on the file representing disk image.
+    pseudo_block_device_fd = open(pseudo_block_device_path, O_RDWR);
+    if (pseudo_block_device_fd == -1) {
+        perror("open");
+        exit(1);
+    }
+    pseudo_block_device_size = sb.st_size;
+    printf("Disk image size: %u bytes\n", pseudo_block_device_size);
+
+    std::unique_ptr<struct pseudo_block_device> pseudo_block_device(new struct pseudo_block_device(pseudo_block_device_fd, pseudo_block_device_size));
+    return std::move(pseudo_block_device);
+}
+
+int main(int argc, const char **argv) {
+    char buffer[4096];
+    int listen_fd, comm_fd, ret;
     struct sockaddr_in servaddr;
 
+    if (argc != 2) {
+        printf("Usage: %s <device file>\n", argv[0]);
+        return -1;
+    }
+
+    std::unique_ptr<struct pseudo_block_device> pseudo_block_device = setup_pseudo_block_device(argv[1]);
+    blockv_server_info server_info_to_network = blockv_server_info::to_network(pseudo_block_device->size(), pseudo_block_device->read_only());
+
     listen_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (listen_fd == -1) {
+        perror("socket");
+        return -1;
+    }
 
-    bzero( &servaddr, sizeof(servaddr));
-
+    bzero(&servaddr, sizeof(servaddr));
     servaddr.sin_family = AF_INET;
     servaddr.sin_addr.s_addr = htons(INADDR_ANY);
     servaddr.sin_port = htons(22000);
@@ -77,9 +151,6 @@ int main()
     }
     printf("Listening on port number 22000...\n");
 
-    blockv_server_info server_info_to_network = blockv_server_info::to_network(10, true);
-    fake_device dev;
-
     for (;;) {
         comm_fd = accept(listen_fd, (struct sockaddr*) NULL, NULL);
 
@@ -89,14 +160,14 @@ int main()
         printf("\n{ NEW CLIENT }\n");
 
         for (;;) {
-            bzero(str, sizeof(str));
-            ret = read(comm_fd, str, sizeof(str));
+            bzero(buffer, sizeof(buffer));
+            ret = read(comm_fd, buffer, sizeof(buffer));
             if (ret == 0) {
                 printf("Client disconnected.\n");
                 break;
             }
 
-            blockv_request* request = (blockv_request*) str;
+            blockv_request* request = (blockv_request*) buffer;
             assert(request->is_valid());
 
             if (request->request == blockv_requests::READ) {
@@ -109,8 +180,8 @@ int main()
                     break;
                 }
 
-                ret = dev.read(read_response->buf, read_request->size, read_request->offset);
-                printf("Read %u bytes at offset %u: \'%.*s\'\n", read_request->size, read_request->offset, ret, read_response->buf);
+                ret = pseudo_block_device->read(read_response->buf, read_request->size, read_request->offset);
+                printf("Read %u bytes at offset %u\n", read_request->size, read_request->offset);
 
                 // adjust size of read response because dev.read() may return
                 // less data than what read request asked for.
@@ -119,7 +190,9 @@ int main()
 
                 delete read_response;
             } else if (request->request == blockv_requests::WRITE) {
-                // TODO: ignore write request if device is read-only.
+                if (pseudo_block_device->read_only()) {
+                    continue;
+                }
                 blockv_write_request* write_request = (blockv_write_request*) request;
                 blockv_write_request::to_host(*write_request);
 
@@ -145,9 +218,8 @@ int main()
                 }
                 assert(remaining_bytes == 0);
 
-                dev.write(buf, write_request->size, write_request->offset);
-                printf("Wrote \'%.*s\' (%u bytes) at offset %u\n", write_request->size, buf,
-                    write_request->size, write_request->offset);
+                pseudo_block_device->write(buf, write_request->size, write_request->offset);
+                printf("Wrote %u bytes at offset %u\n", write_request->size, write_request->offset);
                 delete buf;
             } else if (request->request == blockv_requests::FINISH) {
                 printf("Asked to finish\n");
