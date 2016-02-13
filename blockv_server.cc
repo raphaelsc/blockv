@@ -127,6 +127,8 @@ static void handle_client_requests(int comm_fd, pseudo_block_device& dev) {
     write(comm_fd, (const void*)&server_info_to_network, server_info_to_network.serialized_size());
 
     for (;;) {
+        printf("Waiting for request... ");
+        fflush(stdout);
         bzero(buffer, sizeof(buffer));
         ret = read(comm_fd, buffer, sizeof(buffer));
         if (ret == 0) {
@@ -156,7 +158,7 @@ static void handle_client_requests(int comm_fd, pseudo_block_device& dev) {
             // adjust size of read response because dev.read() may return
             // less data than what read request asked for.
             read_response->set_size_to_network(ret);
-            printf("read response size=%u\n", ntohl(read_response->size));
+
             ret = write(comm_fd, (const void*)read_response, read_response->serialized_size());
             if (ret != read_response->serialized_size()) {
                 printf("Failed to write full response to client: expected: %u, actual %u\n", read_response->serialized_size(), ret);
@@ -192,8 +194,18 @@ static void handle_client_requests(int comm_fd, pseudo_block_device& dev) {
             }
             assert(remaining_bytes == 0);
 
-            dev.write(buf, write_request->size, write_request->offset);
+            ret = dev.write(buf, write_request->size, write_request->offset);
+            if (ret == 0) {
+                printf("dev.write() returned 0 for size %u and offset %u\n", write_request->size, write_request->offset);
+            }
             printf("Wrote %u bytes at offset %u\n", write_request->size, write_request->offset);
+
+            blockv_write_response write_response = blockv_write_response::to_network(write_request->size);
+            ret = write(comm_fd, (const void*)&write_response, blockv_write_response::serialized_size());
+            if (ret != blockv_write_response::serialized_size()) {
+                printf("Failed to write full response to client: expected: %u, actual %u\n", blockv_write_response::serialized_size(), ret);
+            }
+
             delete buf;
         } else if (request->request == blockv_requests::FINISH) {
             printf("Asked to finish\n");

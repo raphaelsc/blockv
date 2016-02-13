@@ -154,6 +154,15 @@ public:
         return _server_connection.server_info->device_size;
     }
 
+    static size_t read_from_server(int sockfd, char *buf, uint32_t size) {
+        auto ret = ::read(sockfd, buf, size);
+        if (ret == 0 || ret == -1) {
+            // handle possible failure on server, for example, server was killed in middle of operation.
+            return 0L;
+        }
+        return ret;
+    }
+
     virtual size_t read(char *buf, size_t size, off_t offset) {
         // TODO: avoid this lock somehow. that's needed for response to correspond the request issued to the server.
         std::lock_guard<std::mutex> lock(_mutex);
@@ -176,17 +185,8 @@ public:
             return 0;
         }
 
-        auto read_from_blockv_server = [] (int sockfd, char *buf, uint32_t size) {
-            auto ret = ::read(sockfd, buf, size);
-            if (ret == 0 || ret == -1) {
-                // handle possible failure on server, for example, server was killed in middle of operation.
-                return 0L;
-            }
-            return ret;
-        };
-
         // Read only blockv_read_response::size to get the size of response.
-        ret = read_from_blockv_server(_server_connection.sockfd, response_buf, sizeof(blockv_read_response::size));
+        ret = read_from_server(_server_connection.sockfd, response_buf, sizeof(blockv_read_response::size));
         if (ret != sizeof(blockv_read_response::size)) {
             delete response_buf;
             return 0;
@@ -205,7 +205,7 @@ public:
         int64_t remaining_bytes = read_response->size;
         uint32_t response_buf_offset = sizeof(blockv_read_response::size);
         while (remaining_bytes > 0) {
-            ret = read_from_blockv_server(_server_connection.sockfd, response_buf + response_buf_offset, remaining_bytes);
+            ret = read_from_server(_server_connection.sockfd, response_buf + response_buf_offset, remaining_bytes);
             if (!ret) {
                 delete response_buf;
                 return 0;
@@ -238,7 +238,13 @@ public:
             ret = 0;
         }
 
-        // TODO: write response?!
+        blockv_write_response write_response;
+        ret = read_from_server(_server_connection.sockfd, (char*)&write_response, blockv_write_response::serialized_size());
+        if (ret != blockv_write_response::serialized_size()) {
+            log("Failed to get full response from server: expected: %ld, actual %d\n", blockv_write_response::serialized_size(), ret);
+            ret = 0;
+        }
+        // FIXME: ignoring write response by the time being.
 
         delete (char *) write_request;
         return size;

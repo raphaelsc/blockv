@@ -75,7 +75,7 @@ struct blockv_read_request {
 } __attribute__((packed));
 
 struct blockv_read_response {
-    uint32_t size; // buf[] size
+    uint32_t size; // bytes read, which also means size of buf[].
     char buf[];
 
     blockv_read_response() = delete;
@@ -161,8 +161,21 @@ struct blockv_write_request {
 
 
 struct blockv_write_response {
-    // TODO: implement
     uint32_t size; // bytes written
+
+    static size_t serialized_size() {
+        return sizeof(uint32_t);
+    }
+
+    static blockv_write_response to_network(uint32_t size) {
+        blockv_write_response write_response;
+        write_response.size = htonl(size);
+        return write_response;
+    }
+
+    static void to_host(blockv_write_response& write_response) {
+        write_response.size = ntohl(write_response.size);
+    }
 } __attribute__((packed));
 
 struct blockv_request {
