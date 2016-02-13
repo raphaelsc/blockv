@@ -10,82 +10,86 @@ Getting started
 -----
 
 - Compile project with:
-    g++ --std=c++14 `pkg-config fuse --cflags --libs` blockv_fuse.cc -o blockv_fuse;
-    g++ --std=c++14 blockv_server.cc -o blockv_server;
+g++ --std=c++14 `pkg-config fuse --cflags --libs` blockv_fuse.cc -o blockv_fuse;
+g++ --std=c++14 blockv_server.cc -o blockv_server;
 
-    NOTE: There is no makefile because I am lazy, but I will write one as soon as possible.
-    NOTE: blockv_fuse depends on FUSE.
+NOTE: There is no makefile because I am lazy, but I will write one as soon as possible.
+NOTE: blockv_fuse depends on FUSE.
 
 
 Playing with network-based block device
 -----
 At this section, you will learn how to export a file system to the outside world.
 
-- Server side:
-    1) Create a pseudo block device that will be exported to the network:
-    qemu-img create -f raw -o size=500M ./pseudo_block_device.raw;
 
-    2) Format pseudo block device with a file system:
-    mkfs.ext2 ./pseudo_block_device;
-    mkdir ./mount_point;
-    sudo mount -t ext2 ./pseudo_block_device.raw ./mount_point;
-    # At this point, copy all files you want to share to the folder ./mount_point.
-    sudo umount ./mount_point;
+1) Server side
 
-    3) Run blockv server with pseudo block device:
-    ./blockv_server ./pseudo_block_device.raw;
+1.1) Create a pseudo block device that will be exported to the network:
+qemu-img create -f raw -o size=500M ./pseudo_block_device.raw;
 
-    Read-only mode (write request is disallowed):
-    ./blockv_server ./pseudo_block_device.raw --read-only;
+1.2) Format pseudo block device with a file system:
+mkfs.ext2 ./pseudo_block_device;
+mkdir ./mount_point;
+sudo mount -t ext2 ./pseudo_block_device.raw ./mount_point;
+# At this point, copy all files you want to share to the folder ./mount_point.
+sudo umount ./mount_point;
 
-    NOTE: After server starts, clients can now read and write content of ./pseudo_block_device.raw;
-    NOTE: Server is still very naive, it doesn't even support multi-client yet.
-    WARNING: for security reasons, real block devices cannot be exported with blockv server (susceptible to change).
+1.3) Run blockv server with pseudo block device:
+./blockv_server ./pseudo_block_device.raw;
 
-- Client side:
-    1) Mount blockv:
-    mkdir ./blockv_mount_point;
-    ./blockv_fuse -d ./blockv_mount_point -o allow_root;
+Read-only mode (write request is disallowed):
+./blockv_server ./pseudo_block_device.raw --read-only;
 
-    NOTE: allow_root option requires adding 'user_allow_other' to /etc/fuse.conf
+NOTE: After server starts, clients can now read and write (if not --read-only) content of ./pseudo_block_device.raw;
+NOTE: Server is still very naive, it doesn't even support multi-client yet.
+WARNING: for security reasons, real block devices cannot be exported with blockv server (susceptible to change).
 
-    2) Create a network-based block device that points to the server above:
-    ln -s localhost:22000 ./blockv_mount_point/remote_block_device;
 
-    NOTE: It's possible to see the ip and port associated with a remote block device.
-    $ ls -l ./blockv_mount_point/remote_block_device;
-    lr--r--r--. 1 root root 524288000 Dec 31  1969 ./blockv_mount_point/remote_block_device -> localhost:22000
+2) Client side
 
-    NOTE: replace localhost by server ip.
+2.1) Mount blockv:
+mkdir ./blockv_mount_point;
+./blockv_fuse -d ./blockv_mount_point -o allow_root;
 
-    3) Mount the network-based block device:
-    mkdir ./mount_point_for_remote_file_system;
-    sudo mount -t ext2 -o loop ./blockv_mount_point/remote_block_device ./mount_point_for_remote_file_system;
+NOTE: allow_root option requires adding 'user_allow_other' to /etc/fuse.conf
 
-    At this point, you can fully use the file system stored in the remote block device.
+2.2) Create a network-based block device that points to the server above:
+ln -s localhost:22000 ./blockv_mount_point/remote_block_device;
+
+NOTE: It's possible to see the ip and port associated with a remote block device.
+$ ls -l ./blockv_mount_point/remote_block_device;
+lr--r--r--. 1 root root 524288000 Dec 31  1969 ./blockv_mount_point/remote_block_device -> localhost:22000
+
+NOTE: replace localhost by server ip.
+
+2.3) Mount the network-based block device:
+mkdir ./mount_point_for_remote_file_system;
+sudo mount -t ext2 -o loop ./blockv_mount_point/remote_block_device ./mount_point_for_remote_file_system;
+
+At this point, you can fully use the file system stored in the remote block device.
 
 
 Playing with memory-based block device
 -----
 
 1) Mount blockv:
-    mkdir ./blockv_mount_point;
-    ./blockv_fuse -d ./blockv_mount_point -o allow_root;
+mkdir ./blockv_mount_point;
+./blockv_fuse -d ./blockv_mount_point -o allow_root;
 
-    NOTE: allow_root option requires adding 'user_allow_other' to /etc/fuse.conf
+NOTE: allow_root option requires adding 'user_allow_other' to /etc/fuse.conf
 
 2) Create a memory-based block device of 30MB:
-    truncate -s 30M ./blockv_mount_point/virtual_block_device;
+truncate -s 30M ./blockv_mount_point/virtual_block_device;
 
 3) Format the memory-based block device with ext2 file system:
-    mkfs.ext2 ./blockv_mount_point/virtual_block_device;
+mkfs.ext2 ./blockv_mount_point/virtual_block_device;
 
-    NOTE: ext2 filesystem was chosen arbitrarily. Any other file system supported by Linux should work as fine.
+NOTE: ext2 filesystem was chosen arbitrarily. Any other file system supported by Linux should work as fine.
 
 4) Mount the ext2 filesystem with:
-    mkdir ./mount_point2;
-    sudo mount -t ext2 -o loop ./blockv_mount_point/virtual_block_device ./mount_point2;
+mkdir ./mount_point2;
+sudo mount -t ext2 -o loop ./blockv_mount_point/virtual_block_device ./mount_point2;
 
-    At this point, you can fully use the file system stored in the memory-based block device.
+At this point, you can fully use the file system stored in the memory-based block device.
 
-    NOTE: ./mount_point2 is now home for a ext2 filesystem backed by memory RAM.
+NOTE: ./mount_point2 is now home for a ext2 filesystem backed by memory RAM.
