@@ -171,7 +171,7 @@ public:
 
         ret = ::write(_server_connection.sockfd, (const void*)&read_request_to_network, read_request_to_network.serialized_size());
         if (ret != read_request_to_network.serialized_size()) {
-            log("Failed to send full request to server: expected: %u, actual %d\n", expected_response_size, ret);
+            log("Failed to send full request to server: expected: %u, actual %d\n", read_request_to_network.serialized_size(), ret);
             delete response_buf;
             return 0;
         }
