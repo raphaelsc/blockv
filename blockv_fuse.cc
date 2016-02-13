@@ -227,6 +227,7 @@ public:
 struct blockv_fuse {
 private:
     std::unordered_map<std::string, virtual_block_device*> _block_devices;
+    std::unordered_map<std::string, virtual_block_device*> _target_to_block_device;
 
 public:
     ~blockv_fuse() {
@@ -234,18 +235,24 @@ public:
             delete it.second;
         }
         _block_devices.clear();
+        _target_to_block_device.clear();
     }
 
     void add_memory_based_block_device(const char *path) {
         _block_devices.emplace(std::string(path), new memory_based_block_device());
     }
 
-    void add_network_based_block_device(const char *path, blockv_server_connection server_connection, const char *target) {
-        _block_devices.emplace(std::string(path), new network_block_device(server_connection, target));
+    void add_network_based_block_device(const char *path, const char *target, blockv_server_connection server_connection) {
+        auto nbd = new network_block_device(server_connection, target);
+        _block_devices.emplace(std::string(path), nbd);
+        _target_to_block_device.emplace("/" + std::string(target), nbd);
     }
 
     void remove_block_device(const char *path) {
-        _block_devices.erase(std::string(path));
+        // TODO: implement.
+        // we need to get iterator to block device to be removed, delete it, and if network based,
+        // remove the entry from _target_to_block_device
+        return;
     }
 
     const std::unordered_map<std::string, virtual_block_device*>& block_devices() {
@@ -254,10 +261,14 @@ public:
 
     virtual_block_device* get_block_device(const char *path) {
         auto it = _block_devices.find(std::string(path));
-        if (it == _block_devices.end()) {
+        if (it != _block_devices.end()) {
+            return it->second;
+        }
+        auto it2 = _target_to_block_device.find(std::string(path));
+        if (it2 == _target_to_block_device.end()) {
             return nullptr;
         }
-        return it->second;
+        return it2->second;
     }
 
     bool block_device_exists(const char *path) {
@@ -296,9 +307,15 @@ static int fs_getattr(const char *path, struct stat *stbuf)
         if (!block_device) {
             res = -ENOENT;
         } else {
-            bool is_memory_based = dynamic_cast<memory_based_block_device*>(block_device);
+            bool is_regular_file = dynamic_cast<memory_based_block_device*>(block_device);
+            if (!is_regular_file) {
+                // target of a network block device will be a regular file. Otherwise the target
+                // would point to iself, which would lead to an infinite loop of links.
+                network_block_device* nbd = dynamic_cast<network_block_device*>(block_device);
+                is_regular_file = (nbd->read_target() == std::string(path + 1));
+            }
 
-            stbuf->st_mode = ((is_memory_based) ? S_IFREG : S_IFREG) | (block_device->read_only() ? 0444 : 0644);
+            stbuf->st_mode = ((is_regular_file) ? S_IFREG : S_IFLNK) | (block_device->read_only() ? 0444 : 0644);
             stbuf->st_nlink = 1;
             stbuf->st_size = block_device->size();
         }
@@ -371,7 +388,7 @@ static int fs_symlink(const char *target, const char *linkpath) {
             return -EIO;
         }
 
-        fs->add_network_based_block_device(linkpath, server_connection, target);
+        fs->add_network_based_block_device(linkpath, target, server_connection);
     }
 
     return 0;
@@ -450,7 +467,7 @@ static int rw(const char *path, const void* buf, size_t size, off_t offset, bool
         }
         ret = operation(block_device, buf, size, offset);
         if (ret != size) {
-            log("Failed to %s %ld bytes at offset %ld of %s", (read) ? "read" : "write", size, offset, path);
+            log("Failed to %s %ld bytes at offset %ld of %s, actual: %ld", (read) ? "read" : "write", size, offset, path, ret);
             return -EIO;
         }
     }
