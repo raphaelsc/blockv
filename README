@@ -16,11 +16,6 @@ Getting started
     NOTE: There is no makefile because I am lazy, but I will try to add one as soon as possible.
     NOTE: Depends on FUSE.
 
-- Mounting blockv:
-    mkdir ./blockv_mount_point;
-    ./blockv_fuse -d ./blockv_mount_point -o allow_root;
-
-    NOTE: allow_root option requires adding 'user_allow_other' to /etc/fuse.conf
 
 Playing with network-based block device
 -----
@@ -45,12 +40,18 @@ Playing with network-based block device
     WARNING: for security reasons, we don't allow real block devices to be used with blockv server.
 
 - Client side:
-    1) Create a network-based block device that points to the server above:
+    1) Mount blockv:
+    mkdir ./blockv_mount_point;
+    ./blockv_fuse -d ./blockv_mount_point -o allow_root;
+
+    NOTE: allow_root option requires adding 'user_allow_other' to /etc/fuse.conf
+
+    2) Create a network-based block device that points to the server above:
     ln -s localhost:22222 ./blockv_mount_point/remote_block_device;
 
     NOTE: replace localhost by server ip.
 
-    2) Mount the network-based block device:
+    3) Mount the network-based block device:
     mkdir ./mount_point_for_remote_file_system;
     sudo mount -t ext2 -o loop ./blockv_mount_point/virtual_block_device ./mount_point_for_remote_file_system;
 
@@ -59,19 +60,28 @@ Playing with network-based block device
     NOTE: Writes aren't supported yet. Support to write will be added soon.
     NOTE: blockv server may decide to allow only reads, so client wouldn't be able to write to remote file system.
 
+
 Playing with memory-based block device
 -----
 
-- Create a memory-based block device of 30MB:
+1) Mount blockv:
+    mkdir ./blockv_mount_point;
+    ./blockv_fuse -d ./blockv_mount_point -o allow_root;
+
+    NOTE: allow_root option requires adding 'user_allow_other' to /etc/fuse.conf
+
+2) Create a memory-based block device of 30MB:
     truncate -s 30M ./blockv_mount_point/virtual_block_device;
 
-- Format the memory-based block device with ext2 file system:
+3) Format the memory-based block device with ext2 file system:
     mkfs.ext2 ./blockv_mount_point/virtual_block_device;
 
     NOTE: ext2 filesystem was chosen arbitrarily. Any other file system supported by Linux should work as fine.
 
-- Mount the ext2 filesystem with:
-   mkdir ./mount_point2;
-   sudo mount -t ext2 -o loop ./blockv_mount_point/virtual_block_device ./mount_point2;
+4) Mount the ext2 filesystem with:
+    mkdir ./mount_point2;
+    sudo mount -t ext2 -o loop ./blockv_mount_point/virtual_block_device ./mount_point2;
 
-   NOTE: ./mount_point2 is now home for a ext2 filesystem backed by memory RAM.
+    At this point, you can fully use the file system stored in the memory-based block device.
+
+    NOTE: ./mount_point2 is now home for a ext2 filesystem backed by memory RAM.
