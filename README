@@ -56,7 +56,7 @@ NOTE: allow_root option requires adding 'user_allow_other' to /etc/fuse.conf
 2.2) Create a network-based block device that points to the server above:
 ln -s localhost:22000 ./blockv_mount_point/remote_block_device;
 
-NOTE: It's possible to see the ip and port associated with a remote block device.
+NOTE: It's possible to see the ip and port associated with a remote block device, look:
 $ ls -l ./blockv_mount_point/remote_block_device;
 lr--r--r--. 1 root root 524288000 Dec 31  1969 ./blockv_mount_point/remote_block_device -> localhost:22000
 
