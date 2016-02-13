@@ -20,6 +20,8 @@
 #include <memory>
 #include "blockv_protocol.hh"
 
+#define BLOCKV_SERVER_PORT 22000
+
 struct pseudo_block_device {
 private:
     int _fd;
@@ -79,7 +81,7 @@ public:
     }
 };
 
-static std::unique_ptr<struct pseudo_block_device> setup_pseudo_block_device(const char *pseudo_block_device_path) {
+static std::unique_ptr<pseudo_block_device> setup_pseudo_block_device(const char *pseudo_block_device_path) {
     int pseudo_block_device_fd = -1;
     uint32_t pseudo_block_device_size = 0; // TODO: extend to uint64_t; need protocol support.
 
@@ -110,12 +112,88 @@ static std::unique_ptr<struct pseudo_block_device> setup_pseudo_block_device(con
     pseudo_block_device_size = sb.st_size;
     printf("Disk image size: %u bytes\n", pseudo_block_device_size);
 
-    std::unique_ptr<struct pseudo_block_device> pseudo_block_device(new struct pseudo_block_device(pseudo_block_device_fd, pseudo_block_device_size));
-    return std::move(pseudo_block_device);
+    std::unique_ptr<pseudo_block_device> dev(new pseudo_block_device(pseudo_block_device_fd, pseudo_block_device_size));
+    return std::move(dev);
+}
+
+static void handle_client_requests(int comm_fd, pseudo_block_device& dev) {
+    char buffer[4096];
+    int ret;
+
+    // send server info to new client
+    blockv_server_info server_info_to_network = blockv_server_info::to_network(dev.size(), dev.read_only());
+    write(comm_fd, (const void*)&server_info_to_network, server_info_to_network.serialized_size());
+
+    for (;;) {
+        bzero(buffer, sizeof(buffer));
+        ret = read(comm_fd, buffer, sizeof(buffer));
+        if (ret == 0) {
+            printf("Client disconnected.\n");
+            break;
+        }
+
+        blockv_request* request = (blockv_request*) buffer;
+        assert(request->is_valid());
+
+        if (request->request == blockv_requests::READ) {
+            blockv_read_request* read_request = (blockv_read_request*) request;
+            blockv_read_request::to_host(*read_request);
+
+            blockv_read_response* read_response = blockv_read_response::to_network(read_request->size);
+            if (!read_response) {
+                printf("Failed to allocate data to fulfill read request\n");
+                break;
+            }
+
+            ret = dev.read(read_response->buf, read_request->size, read_request->offset);
+            printf("Read %u bytes at offset %u\n", read_request->size, read_request->offset);
+
+            // adjust size of read response because dev.read() may return
+            // less data than what read request asked for.
+            read_response->set_size_to_network(ret);
+            write(comm_fd, (const void*)read_response, read_response->serialized_size());
+
+            delete read_response;
+        } else if (request->request == blockv_requests::WRITE) {
+            if (dev.read_only()) {
+                continue;
+            }
+            blockv_write_request* write_request = (blockv_write_request*) request;
+            blockv_write_request::to_host(*write_request);
+
+            char* buf;
+            try {
+                buf = new char[write_request->size];
+            } catch (...) {
+                printf("Failed to allocate %u bytes to write request\n", write_request->size);
+                break;
+            }
+
+            // Buffer may be fragmented in multiple messages, so we may need to perform
+            // multiple reads to get the complete buffer.
+            uint32_t buf_size_in_this_message = ret - blockv_write_request::serialized_size(0);
+            memcpy(buf, write_request->buf, buf_size_in_this_message);
+
+            int64_t remaining_bytes = write_request->size - buf_size_in_this_message;
+            uint32_t offset = buf_size_in_this_message;
+            while (remaining_bytes > 0) {
+                ret = read(comm_fd, buf + offset, remaining_bytes);
+                remaining_bytes -= ret;
+                offset += ret;
+            }
+            assert(remaining_bytes == 0);
+
+            dev.write(buf, write_request->size, write_request->offset);
+            printf("Wrote %u bytes at offset %u\n", write_request->size, write_request->offset);
+            delete buf;
+        } else if (request->request == blockv_requests::FINISH) {
+            printf("Asked to finish\n");
+            break;
+        }
+    }
 }
 
 int main(int argc, const char **argv) {
-    char buffer[4096];
     int listen_fd, comm_fd, ret;
     struct sockaddr_in servaddr;
 
@@ -124,8 +202,7 @@ int main(int argc, const char **argv) {
         return -1;
     }
 
-    std::unique_ptr<struct pseudo_block_device> pseudo_block_device = setup_pseudo_block_device(argv[1]);
-    blockv_server_info server_info_to_network = blockv_server_info::to_network(pseudo_block_device->size(), pseudo_block_device->read_only());
+    std::unique_ptr<pseudo_block_device> dev = setup_pseudo_block_device(argv[1]);
 
     listen_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (listen_fd == -1) {
@@ -136,7 +213,7 @@ int main(int argc, const char **argv) {
     bzero(&servaddr, sizeof(servaddr));
     servaddr.sin_family = AF_INET;
     servaddr.sin_addr.s_addr = htons(INADDR_ANY);
-    servaddr.sin_port = htons(22000);
+    servaddr.sin_port = htons(BLOCKV_SERVER_PORT);
 
     ret = bind(listen_fd, (struct sockaddr *) &servaddr, sizeof(servaddr));
     if (ret == -1) {
@@ -149,84 +226,12 @@ int main(int argc, const char **argv) {
         perror("listen");
         return -1;
     }
-    printf("Listening on port number 22000...\n");
+    printf("Listening on port number %d...\n", BLOCKV_SERVER_PORT);
 
     for (;;) {
         comm_fd = accept(listen_fd, (struct sockaddr*) NULL, NULL);
-
-        // send server info to client
-        write(comm_fd, (const void*)&server_info_to_network, server_info_to_network.serialized_size());
-
         printf("\n{ NEW CLIENT }\n");
-
-        for (;;) {
-            bzero(buffer, sizeof(buffer));
-            ret = read(comm_fd, buffer, sizeof(buffer));
-            if (ret == 0) {
-                printf("Client disconnected.\n");
-                break;
-            }
-
-            blockv_request* request = (blockv_request*) buffer;
-            assert(request->is_valid());
-
-            if (request->request == blockv_requests::READ) {
-                blockv_read_request* read_request = (blockv_read_request*) request;
-                blockv_read_request::to_host(*read_request);
-
-                blockv_read_response* read_response = blockv_read_response::to_network(read_request->size);
-                if (!read_response) {
-                    printf("Failed to allocate data to fulfill read request\n");
-                    break;
-                }
-
-                ret = pseudo_block_device->read(read_response->buf, read_request->size, read_request->offset);
-                printf("Read %u bytes at offset %u\n", read_request->size, read_request->offset);
-
-                // adjust size of read response because dev.read() may return
-                // less data than what read request asked for.
-                read_response->set_size_to_network(ret);
-                write(comm_fd, (const void*)read_response, read_response->serialized_size());
-
-                delete read_response;
-            } else if (request->request == blockv_requests::WRITE) {
-                if (pseudo_block_device->read_only()) {
-                    continue;
-                }
-                blockv_write_request* write_request = (blockv_write_request*) request;
-                blockv_write_request::to_host(*write_request);
-
-                char* buf;
-                try {
-                    buf = new char[write_request->size];
-                } catch (...) {
-                    printf("Failed to allocate %u bytes to write request\n", write_request->size);
-                    break;
-                }
-
-                // Buffer may be fragmented in multiple messages, so we may need to perform
-                // multiple reads to get the complete buffer.
-                uint32_t buf_size_in_this_message = ret - blockv_write_request::serialized_size(0);
-                memcpy(buf, write_request->buf, buf_size_in_this_message);
-
-                int64_t remaining_bytes = write_request->size - buf_size_in_this_message;
-                uint32_t offset = buf_size_in_this_message;
-                while (remaining_bytes > 0) {
-                    ret = read(comm_fd, buf + offset, remaining_bytes);
-                    remaining_bytes -= ret;
-                    offset += ret;
-                }
-                assert(remaining_bytes == 0);
-
-                pseudo_block_device->write(buf, write_request->size, write_request->offset);
-                printf("Wrote %u bytes at offset %u\n", write_request->size, write_request->offset);
-                delete buf;
-            } else if (request->request == blockv_requests::FINISH) {
-                printf("Asked to finish\n");
-                break;
-            }
-        }
-
+        handle_client_requests(comm_fd, *dev);
         close(comm_fd);
     }
 
