@@ -171,7 +171,7 @@ public:
 
         ret = ::write(_server_connection.sockfd, (const void*)&read_request_to_network, read_request_to_network.serialized_size());
         if (ret != read_request_to_network.serialized_size()) {
-            log("Failed to send full request to server: expected: %u, actual %u\n", expected_response_size, ret);
+            log("Failed to send full request to server: expected: %u, actual %d\n", expected_response_size, ret);
             delete response_buf;
             return 0;
         }
@@ -207,12 +207,11 @@ public:
         while (remaining_bytes > 0) {
             ret = read_from_blockv_server(_server_connection.sockfd, response_buf + response_buf_offset, remaining_bytes);
             if (!ret) {
-                // handle possible failure on server, for example, server was killed in middle of operation.
                 delete response_buf;
                 return 0;
             }
             if (ret != remaining_bytes) {
-                log("Failed to get full response from server: expected: %u, actual %u\n", remaining_bytes, ret);
+                log("Failed to get full response from server: expected: %ld, actual %d\n", remaining_bytes, ret);
             }
             remaining_bytes -= ret;
             response_buf_offset += ret;
