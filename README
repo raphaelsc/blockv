@@ -1,7 +1,7 @@
 blockv project is composed of blockv server and blockv FUSE (client).
 blockv server is used to export a block device that can be accessed by blockv FUSE.
 
-A blockv FUSE mount point may store a large number of files that link to different blockv servers.
+With blockv FUSE, it's easy to keep access to a large number of block devices that are exported by respective blockv servers.
 
 This project is based on the concept of network block device. For further information:
 https://en.wikipedia.org/wiki/Network_block_device
