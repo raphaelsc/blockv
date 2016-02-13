@@ -25,7 +25,8 @@
 struct pseudo_block_device {
 private:
     int _fd;
-    uint32_t _pseudo_block_device_size;
+    uint32_t _pseudo_block_device_size; // FIXME: extend to uint64_t.
+    bool _read_only;
 
     uint32_t get_actual_size(uint32_t size, uint32_t offset) const {
         uint32_t actual_size = 0;
@@ -39,17 +40,17 @@ private:
     }
 public:
     pseudo_block_device() = delete;
-    pseudo_block_device(int fd, uint32_t size)
+    pseudo_block_device(int fd, uint32_t size, bool read_only)
         : _fd(fd)
-        , _pseudo_block_device_size(size) {}
+        , _pseudo_block_device_size(size)
+        , _read_only(read_only) {}
     ~pseudo_block_device() {
         printf("Closing disk image...\n");
         close(_fd);
     }
 
     bool read_only() const {
-        // FIXME: test later with write support;
-        return true;
+        return _read_only;
     }
 
     uint32_t size() const {
@@ -81,11 +82,11 @@ public:
     }
 };
 
-static std::unique_ptr<pseudo_block_device> setup_pseudo_block_device(const char *pseudo_block_device_path) {
+static std::unique_ptr<pseudo_block_device> setup_pseudo_block_device(const char *pseudo_block_device_path, bool read_only) {
     int pseudo_block_device_fd = -1;
     uint32_t pseudo_block_device_size = 0; // TODO: extend to uint64_t; need protocol support.
 
-    printf("Disk image to be used: %s\n", pseudo_block_device_path);
+    printf("Pseudo block device name: %s\n", pseudo_block_device_path);
 
     struct stat sb;
     if (stat(pseudo_block_device_path, &sb) == -1) {
@@ -104,15 +105,16 @@ static std::unique_ptr<pseudo_block_device> setup_pseudo_block_device(const char
     }
 
     // TODO: we should probably use flock on the file representing disk image.
-    pseudo_block_device_fd = open(pseudo_block_device_path, O_RDWR | O_SYNC);
+    pseudo_block_device_fd = open(pseudo_block_device_path, ((read_only) ? O_RDONLY : O_RDWR) | O_SYNC);
     if (pseudo_block_device_fd == -1) {
         perror("open");
         exit(1);
     }
     pseudo_block_device_size = sb.st_size;
-    printf("Disk image size: %u bytes\n", pseudo_block_device_size);
+    printf("Pseudo block device size: %u bytes\n", pseudo_block_device_size);
+    printf("Read only? %s\n", read_only ? "yes" : "no");
 
-    std::unique_ptr<pseudo_block_device> dev(new pseudo_block_device(pseudo_block_device_fd, pseudo_block_device_size));
+    std::unique_ptr<pseudo_block_device> dev(new pseudo_block_device(pseudo_block_device_fd, pseudo_block_device_size, read_only));
     return std::move(dev);
 }
 
@@ -203,13 +205,19 @@ static void handle_client_requests(int comm_fd, pseudo_block_device& dev) {
 int main(int argc, const char **argv) {
     int listen_fd, comm_fd, ret;
     struct sockaddr_in servaddr;
+    bool read_only = false;
 
-    if (argc != 2) {
-        printf("Usage: %s <device file>\n", argv[0]);
+    if (argc != 2 && argc != 3) {
+        printf("Usage:\n" \
+               "%s <device file>\n" \
+               "%s <device file> --read-only\n", argv[0], argv[0]);
         return -1;
     }
+    if (argc == 3) {
+        read_only = (std::string(argv[2]) == "--read-only");
+    }
 
-    std::unique_ptr<pseudo_block_device> dev = setup_pseudo_block_device(argv[1]);
+    std::unique_ptr<pseudo_block_device> dev = setup_pseudo_block_device(argv[1], read_only);
 
     listen_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (listen_fd == -1) {

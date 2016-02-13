@@ -171,7 +171,7 @@ public:
 
         ret = ::write(_server_connection.sockfd, (const void*)&read_request_to_network, read_request_to_network.serialized_size());
         if (ret != read_request_to_network.serialized_size()) {
-            log("Failed to send full request to server: expected: %u, actual %d\n", read_request_to_network.serialized_size(), ret);
+            log("Failed to send full read request to server: expected: %u, actual %d\n", read_request_to_network.serialized_size(), ret);
             delete response_buf;
             return 0;
         }
@@ -221,7 +221,28 @@ public:
         memcpy(buf, (const char *)read_response->buf, read_response->size);
         return read_response->size;
     }
-    virtual size_t write(const char *buf, size_t size, off_t offset) { return 0; };
+
+    virtual size_t write(const char *buf, size_t size, off_t offset) {
+        std::lock_guard<std::mutex> lock(_mutex);
+        size_t ret;
+
+        blockv_write_request* write_request = blockv_write_request::to_network(buf, size, offset);
+        if (write_request == nullptr) {
+            delete (char *) write_request;
+            return 0;
+        }
+
+        ret = ::write(_server_connection.sockfd, (const void*)write_request, write_request->serialized_size());
+        if (ret != write_request->serialized_size()) {
+            log("Failed to send full write request to server: expected: %u, actual %d\n", write_request->serialized_size(), ret);
+            ret = 0;
+        }
+
+        // TODO: write response?!
+
+        delete (char *) write_request;
+        return ret;
+    }
 };
 
 struct blockv_fuse {

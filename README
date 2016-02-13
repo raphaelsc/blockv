@@ -13,31 +13,34 @@ Getting started
     g++ --std=c++14 `pkg-config fuse --cflags --libs` blockv_fuse.cc -o blockv_fuse;
     g++ --std=c++14 blockv_server.cc -o blockv_server;
 
-    NOTE: There is no makefile because I am lazy, but I will try to add one as soon as possible.
+    NOTE: There is no makefile because I am lazy, but I will write one as soon as possible.
     NOTE: blockv_fuse depends on FUSE.
 
 
 Playing with network-based block device
 -----
+At this section, you will learn how to export a file system to the outside world.
 
 - Server side:
-    1) Create a pseudo block device that will be accessed via network:
+    1) Create a pseudo block device that will be exported to the network:
     qemu-img create -f raw -o size=500M ./pseudo_block_device.raw;
 
-    2) Format pseudo block device with a file system and add to it any files you want to share:
+    2) Format pseudo block device with a file system:
     mkfs.ext2 ./pseudo_block_device;
     mkdir ./mount_point;
     sudo mount -t ext2 ./pseudo_block_device.raw ./mount_point;
-    # At this point, add any files you want to share at ./mount_point.
+    # At this point, copy all files you want to share to the folder ./mount_point.
     sudo umount ./mount_point;
 
     3) Run blockv server with pseudo block device:
     ./blockv_server ./pseudo_block_device.raw;
 
+    Read-only mode (write request is disallowed):
+    ./blockv_server ./pseudo_block_device.raw --read-only;
+
     NOTE: After server starts, clients can now read and write content of ./pseudo_block_device.raw;
-          In the future, ./blockv_server will provide a read-only flag to forbid writes.
     NOTE: Server is still very naive, it doesn't even support multi-client yet.
-    WARNING: for security reasons, we don't allow real block devices to be used with blockv server (susceptible to change).
+    WARNING: for security reasons, real block devices cannot be exported with blockv server (susceptible to change).
 
 - Client side:
     1) Mount blockv:
@@ -60,9 +63,6 @@ Playing with network-based block device
     sudo mount -t ext2 -o loop ./blockv_mount_point/remote_block_device ./mount_point_for_remote_file_system;
 
     At this point, you can fully use the file system stored in the remote block device.
-
-    NOTE: Writes aren't supported yet. Support to write will be added soon.
-    NOTE: blockv server may decide to allow only reads, so client wouldn't be able to write to remote file system.
 
 
 Playing with memory-based block device
