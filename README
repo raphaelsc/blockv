@@ -1,6 +1,9 @@
-FUSE created to provide access to network and memory based block devices.
+blockv project is composed of blockv server and blockv FUSE (client).
+blockv server is used to export a block device that can be accessed by blockv FUSE.
 
-Further information about network-based block device:
+A blockv FUSE mount point may store a large number of files that link to different blockv servers.
+
+This project is based on the concept of network block device. For further information:
 https://en.wikipedia.org/wiki/Network_block_device
 
 Getting started
@@ -39,7 +42,7 @@ Playing with network-based block device
     NOTE: After server starts, clients can now read and write content of ./pseudo_block_device.raw;
           In the future, ./blockv_server will provide a read-only flag to forbid writes.
     NOTE: Server is still very naive, it doesn't even support multi-client yet.
-    WARNING: for safety reasons, we don't allow real block devices to be used with blockv server.
+    WARNING: for security reasons, we don't allow real block devices to be used with blockv server.
 
 - Client side:
     1) Create a network-based block device that points to the server above:
