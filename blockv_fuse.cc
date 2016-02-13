@@ -153,6 +153,7 @@ public:
     virtual size_t size() {
         return _server_connection.server_info->device_size;
     }
+
     virtual size_t read(char *buf, size_t size, off_t offset) {
         // TODO: avoid this lock somehow. that's needed for response to correspond the request issued to the server.
         std::lock_guard<std::mutex> lock(_mutex);
@@ -171,12 +172,19 @@ public:
         ret = ::write(_server_connection.sockfd, (const void*)&read_request_to_network, read_request_to_network.serialized_size());
         if (ret != read_request_to_network.serialized_size()) {
             log("Failed to sent full request to server: expected: %u, actual %u\n", response_size, ret);
+            delete response_buf;
+            return 0;
         }
 
         int64_t remaining_bytes = response_size;
         uint32_t response_buf_offset = 0;
         while (remaining_bytes > 0) {
             ret = ::read(_server_connection.sockfd, response_buf + response_buf_offset, remaining_bytes);
+            if (ret == 0 || ret == -1) {
+                // handle possible failure on server, for example, server was killed in middle of operation.
+                delete response_buf;
+                return 0;
+            }
             if (ret != remaining_bytes) {
                 log("Failed to get full response from server: expected: %u, actual %u\n", remaining_bytes, ret);
             }
