@@ -37,7 +37,7 @@ Playing with network-based block device
     NOTE: After server starts, clients can now read and write content of ./pseudo_block_device.raw;
           In the future, ./blockv_server will provide a read-only flag to forbid writes.
     NOTE: Server is still very naive, it doesn't even support multi-client yet.
-    WARNING: for security reasons, we don't allow real block devices to be used with blockv server.
+    WARNING: for security reasons, we don't allow real block devices to be used with blockv server (susceptible to change).
 
 - Client side:
     1) Mount blockv:
