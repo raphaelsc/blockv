@@ -14,10 +14,13 @@
 #include <fcntl.h>
 #include <stdarg.h>
 #include <unistd.h>
+#include <assert.h>
 #include <unordered_map>
 #include <functional>
 #include <mutex>
 #include "blockv_protocol.hh"
+
+static int log(const char *format, ...);
 
 struct virtual_block_device {
     virtual ~virtual_block_device(){}
@@ -166,16 +169,26 @@ public:
         memset(response_buf, 0, response_size);
 
         ret = ::write(_server_connection.sockfd, (const void*)&read_request_to_network, read_request_to_network.serialized_size());
-        // TODO: check for return of write.
-        ret = ::read(_server_connection.sockfd, response_buf, response_size);
-        if (ret != response_size) {
-            delete response_buf;
-            return 0;
+        if (ret != read_request_to_network.serialized_size()) {
+            log("Failed to sent full request to server: expected: %u, actual %u\n", response_size, ret);
         }
+
+        int64_t remaining_bytes = response_size;
+        uint32_t response_buf_offset = 0;
+        while (remaining_bytes > 0) {
+            ret = ::read(_server_connection.sockfd, response_buf + response_buf_offset, remaining_bytes);
+            if (ret != remaining_bytes) {
+                log("Failed to get full response from server: expected: %u, actual %u\n", remaining_bytes, ret);
+            }
+            remaining_bytes -= ret;
+            response_buf_offset += ret;
+        }
+        assert(remaining_bytes == 0);
 
         blockv_read_response* read_response = (blockv_read_response*) response_buf;
         blockv_read_response::to_host(*read_response);
         if (read_response->size != size) {
+            log("Read response size: %u, read size param: %u\n", read_response->size, size);
             delete response_buf;
             return 0;
         }

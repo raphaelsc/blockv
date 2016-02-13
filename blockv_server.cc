@@ -146,12 +146,19 @@ static void handle_client_requests(int comm_fd, pseudo_block_device& dev) {
             }
 
             ret = dev.read(read_response->buf, read_request->size, read_request->offset);
+            if (ret == 0) {
+                printf("dev.read() returned 0 for size %u and offset %u\n", read_request->size, read_request->offset);
+            }
             printf("Read %u bytes at offset %u\n", read_request->size, read_request->offset);
 
             // adjust size of read response because dev.read() may return
             // less data than what read request asked for.
             read_response->set_size_to_network(ret);
-            write(comm_fd, (const void*)read_response, read_response->serialized_size());
+            printf("read response size=%u\n", ntohl(read_response->size));
+            ret = write(comm_fd, (const void*)read_response, read_response->serialized_size());
+            if (ret != read_response->serialized_size()) {
+                printf("Failed to write full response to client: expected: %u, actual %u\n", read_response->serialized_size(), ret);
+            }
 
             delete read_response;
         } else if (request->request == blockv_requests::WRITE) {
