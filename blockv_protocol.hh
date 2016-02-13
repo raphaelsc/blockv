@@ -75,7 +75,7 @@ struct blockv_read_request {
 } __attribute__((packed));
 
 struct blockv_read_response {
-    uint32_t size; // bytes read
+    uint32_t size; // buf[] size
     char buf[];
 
     blockv_read_response() = delete;

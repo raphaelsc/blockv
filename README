@@ -53,7 +53,7 @@ Playing with network-based block device
 
     3) Mount the network-based block device:
     mkdir ./mount_point_for_remote_file_system;
-    sudo mount -t ext2 -o loop ./blockv_mount_point/virtual_block_device ./mount_point_for_remote_file_system;
+    sudo mount -t ext2 -o loop ./blockv_mount_point/remote_block_device ./mount_point_for_remote_file_system;
 
     At this point, you can fully use the file system stored in the remote block device.
 

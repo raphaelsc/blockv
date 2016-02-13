@@ -160,27 +160,53 @@ public:
         int ret;
         blockv_read_request read_request_to_network = blockv_read_request::to_network(size, offset);
 
-        size_t response_size = blockv_read_response::predict_read_response_size(read_request_to_network);
+        size_t expected_response_size = blockv_read_response::predict_read_response_size(read_request_to_network);
         char *response_buf = nullptr;
         try {
-            response_buf = new char[response_size];
+            response_buf = new char[expected_response_size];
         } catch(...) {
             return 0;
         }
-        memset(response_buf, 0, response_size);
+        memset(response_buf, 0, expected_response_size);
 
         ret = ::write(_server_connection.sockfd, (const void*)&read_request_to_network, read_request_to_network.serialized_size());
         if (ret != read_request_to_network.serialized_size()) {
-            log("Failed to sent full request to server: expected: %u, actual %u\n", response_size, ret);
+            log("Failed to send full request to server: expected: %u, actual %u\n", expected_response_size, ret);
             delete response_buf;
             return 0;
         }
 
-        int64_t remaining_bytes = response_size;
-        uint32_t response_buf_offset = 0;
-        while (remaining_bytes > 0) {
-            ret = ::read(_server_connection.sockfd, response_buf + response_buf_offset, remaining_bytes);
+        auto read_from_blockv_server = [] (int sockfd, char *buf, uint32_t size) {
+            auto ret = ::read(sockfd, buf, size);
             if (ret == 0 || ret == -1) {
+                // handle possible failure on server, for example, server was killed in middle of operation.
+                return 0L;
+            }
+            return ret;
+        };
+
+        // Read only blockv_read_response::size to get the size of response.
+        ret = read_from_blockv_server(_server_connection.sockfd, response_buf, sizeof(blockv_read_response::size));
+        if (ret != sizeof(blockv_read_response::size)) {
+            delete response_buf;
+            return 0;
+        }
+
+        blockv_read_response* read_response = (blockv_read_response*) response_buf;
+        blockv_read_response::to_host(*read_response);
+        if (read_response->size != size) {
+            // This also handles the corner case in which response size is bigger than expected,
+            // potentially leading to a buffer overflow.
+            log("Read response size: expected: %u, actual: %u\n", size, read_response->size);
+            delete response_buf;
+            return 0;
+        }
+
+        int64_t remaining_bytes = read_response->size;
+        uint32_t response_buf_offset = sizeof(blockv_read_response::size);
+        while (remaining_bytes > 0) {
+            ret = read_from_blockv_server(_server_connection.sockfd, response_buf + response_buf_offset, remaining_bytes);
+            if (!ret) {
                 // handle possible failure on server, for example, server was killed in middle of operation.
                 delete response_buf;
                 return 0;
@@ -193,13 +219,6 @@ public:
         }
         assert(remaining_bytes == 0);
 
-        blockv_read_response* read_response = (blockv_read_response*) response_buf;
-        blockv_read_response::to_host(*read_response);
-        if (read_response->size != size) {
-            log("Read response size: %u, read size param: %u\n", read_response->size, size);
-            delete response_buf;
-            return 0;
-        }
         memcpy(buf, (const char *)read_response->buf, read_response->size);
         return read_response->size;
     }
