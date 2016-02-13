@@ -28,7 +28,7 @@ At this section, you will learn how to export a file system to the outside world
 qemu-img create -f raw -o size=500M ./pseudo_block_device.raw;
 
 1.2) Format pseudo block device with a file system:
-mkfs.ext2 ./pseudo_block_device;
+mkfs.ext2 ./pseudo_block_device.raw;
 mkdir ./mount_point;
 sudo mount -t ext2 ./pseudo_block_device.raw ./mount_point;
 # At this point, copy all files you want to share to the folder ./mount_point.

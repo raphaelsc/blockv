@@ -232,8 +232,8 @@ public:
             return 0;
         }
 
-        ret = ::write(_server_connection.sockfd, (const void*)write_request, write_request->serialized_size());
-        if (ret != write_request->serialized_size()) {
+        size_t written = ::write(_server_connection.sockfd, (const void*)write_request, write_request->serialized_size());
+        if (written != write_request->serialized_size()) {
             log("Failed to send full write request to server: expected: %u, actual %d\n", write_request->serialized_size(), ret);
             ret = 0;
         }
@@ -241,7 +241,7 @@ public:
         // TODO: write response?!
 
         delete (char *) write_request;
-        return ret;
+        return size;
     }
 };
 
