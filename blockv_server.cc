@@ -104,7 +104,7 @@ static std::unique_ptr<pseudo_block_device> setup_pseudo_block_device(const char
     }
 
     // TODO: we should probably use flock on the file representing disk image.
-    pseudo_block_device_fd = open(pseudo_block_device_path, O_RDWR);
+    pseudo_block_device_fd = open(pseudo_block_device_path, O_RDWR | O_SYNC);
     if (pseudo_block_device_fd == -1) {
         perror("open");
         exit(1);

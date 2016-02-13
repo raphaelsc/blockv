@@ -14,7 +14,7 @@ Getting started
     g++ --std=c++14 blockv_server.cc -o blockv_server;
 
     NOTE: There is no makefile because I am lazy, but I will try to add one as soon as possible.
-    NOTE: Depends on FUSE.
+    NOTE: blockv_fuse depends on FUSE.
 
 
 Playing with network-based block device
