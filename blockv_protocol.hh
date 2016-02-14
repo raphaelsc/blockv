@@ -80,8 +80,14 @@ struct blockv_read_response {
 
     blockv_read_response() = delete;
 
+    // It's used to get the size of the metadata of a read response, so
+    // caller can read the metadata first before reading the data.
+    static size_t metadata_size() {
+        return sizeof(uint32_t);
+    }
+
     static size_t serialized_size(uint32_t buf_size) {
-        return sizeof(uint32_t) + buf_size;
+        return metadata_size() + buf_size;
     }
 
     size_t serialized_size() {

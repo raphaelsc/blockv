@@ -186,8 +186,8 @@ public:
         }
 
         // Read only blockv_read_response::size to get the size of response.
-        ret = read_from_server(_server_connection.sockfd, response_buf, sizeof(blockv_read_response::size));
-        if (ret != sizeof(blockv_read_response::size)) {
+        ret = read_from_server(_server_connection.sockfd, response_buf, blockv_read_response::metadata_size());
+        if (ret != blockv_read_response::metadata_size()) {
             delete response_buf;
             return 0;
         }
@@ -203,7 +203,7 @@ public:
         }
 
         int64_t remaining_bytes = read_response->size;
-        uint32_t response_buf_offset = sizeof(blockv_read_response::size);
+        uint32_t response_buf_offset = blockv_read_response::metadata_size();
         while (remaining_bytes > 0) {
             ret = read_from_server(_server_connection.sockfd, response_buf + response_buf_offset, remaining_bytes);
             if (!ret) {
