@@ -109,11 +109,8 @@ struct blockv_read_response {
     // this->set_size_to_network() to adjust size of response.
     static blockv_read_response* to_network(uint32_t buf_size) {
         size_t bytes_to_allocate = serialized_size(buf_size);
-        blockv_read_response* read_response;
-
-        try {
-            read_response = (blockv_read_response*) new char[bytes_to_allocate];
-        } catch (...) {
+        blockv_read_response* read_response = (blockv_read_response*) new (std::nothrow) char[bytes_to_allocate];
+        if (!read_response) {
             return nullptr;
         }
 

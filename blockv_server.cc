@@ -172,10 +172,8 @@ static void handle_client_requests(int comm_fd, pseudo_block_device& dev) {
             blockv_write_request* write_request = (blockv_write_request*) request;
             blockv_write_request::to_host(*write_request);
 
-            char* buf;
-            try {
-                buf = new char[write_request->size];
-            } catch (...) {
+            std::unique_ptr<char> buf(new (std::nothrow) char[write_request->size]);
+            if (!buf) {
                 printf("Failed to allocate %u bytes to write request\n", write_request->size);
                 break;
             }
@@ -183,18 +181,18 @@ static void handle_client_requests(int comm_fd, pseudo_block_device& dev) {
             // Buffer may be fragmented in multiple messages, so we may need to perform
             // multiple reads to get the complete buffer.
             uint32_t buf_size_in_this_message = ret - blockv_write_request::serialized_size(0);
-            memcpy(buf, write_request->buf, buf_size_in_this_message);
+            memcpy(buf.get(), write_request->buf, buf_size_in_this_message);
 
             int64_t remaining_bytes = write_request->size - buf_size_in_this_message;
             uint32_t offset = buf_size_in_this_message;
             while (remaining_bytes > 0) {
-                ret = read(comm_fd, buf + offset, remaining_bytes);
+                ret = read(comm_fd, buf.get() + offset, remaining_bytes);
                 remaining_bytes -= ret;
                 offset += ret;
             }
             assert(remaining_bytes == 0);
 
-            ret = dev.write(buf, write_request->size, write_request->offset);
+            ret = dev.write(buf.get(), write_request->size, write_request->offset);
             if (ret == 0) {
                 printf("dev.write() returned 0 for size %u and offset %u\n", write_request->size, write_request->offset);
             }
@@ -205,8 +203,6 @@ static void handle_client_requests(int comm_fd, pseudo_block_device& dev) {
             if (ret != blockv_write_response::serialized_size()) {
                 printf("Failed to write full response to client: expected: %u, actual %u\n", blockv_write_response::serialized_size(), ret);
             }
-
-            delete buf;
         } else if (request->request == blockv_requests::FINISH) {
             printf("Asked to finish\n");
             break;

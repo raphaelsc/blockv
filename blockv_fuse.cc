@@ -18,6 +18,7 @@
 #include <unordered_map>
 #include <functional>
 #include <mutex>
+#include <memory>
 #include "blockv_protocol.hh"
 
 static int log(const char *format, ...);
@@ -188,48 +189,42 @@ public:
         blockv_read_request read_request_to_network = blockv_read_request::to_network(size, offset);
 
         size_t expected_response_size = blockv_read_response::predict_read_response_size(read_request_to_network);
-        char *response_buf = nullptr;
-        try {
-            response_buf = new char[expected_response_size];
-        } catch(...) {
+        std::unique_ptr<char> response_buf(new (std::nothrow) char[expected_response_size]);
+        if (!response_buf) {
             return 0;
         }
-        memset(response_buf, 0, expected_response_size);
+        memset(response_buf.get(), 0, expected_response_size);
 
         ret = ::write(_server_connection.sockfd, (const void*)&read_request_to_network, read_request_to_network.serialized_size());
         if (ret != read_request_to_network.serialized_size()) {
             log("Failed to send full read request to server: expected: %u, actual %d\n", read_request_to_network.serialized_size(), ret);
             reconnect_to_blockv_server();
-            delete response_buf;
             return 0;
         }
 
         // Read only blockv_read_response::size to get the size of response.
-        ret = read_from_server(_server_connection.sockfd, response_buf, blockv_read_response::metadata_size());
+        ret = read_from_server(_server_connection.sockfd, response_buf.get(), blockv_read_response::metadata_size());
         if (ret != blockv_read_response::metadata_size()) {
             reconnect_to_blockv_server();
-            delete response_buf;
             return 0;
         }
 
-        blockv_read_response* read_response = (blockv_read_response*) response_buf;
+        blockv_read_response* read_response = (blockv_read_response*) response_buf.get();
         blockv_read_response::to_host(*read_response);
         if (read_response->size != size) {
             // This also handles the corner case in which response size is bigger than expected,
             // potentially leading to a buffer overflow.
             log("Read response size: expected: %u, actual: %u\n", size, read_response->size);
             reconnect_to_blockv_server();
-            delete response_buf;
             return 0;
         }
 
         int64_t remaining_bytes = read_response->size;
         uint32_t response_buf_offset = blockv_read_response::metadata_size();
         while (remaining_bytes > 0) {
-            ret = read_from_server(_server_connection.sockfd, response_buf + response_buf_offset, remaining_bytes);
+            ret = read_from_server(_server_connection.sockfd, response_buf.get() + response_buf_offset, remaining_bytes);
             if (!ret) {
                 reconnect_to_blockv_server();
-                delete response_buf;
                 return 0;
             }
             if (ret != remaining_bytes) {
