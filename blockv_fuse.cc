@@ -479,10 +479,8 @@ static int fs_truncate(const char *path, off_t size) {
         return -EPERM;
     }
 
-    void* block_device_content;
-    try {
-        block_device_content = new char[size];
-    } catch (...) {
+    void* block_device_content = (void*) new (std::nothrow) char[size];
+    if (!block_device_content) {
         return -EIO;
     }
     block_device->set_block_device_content(block_device_content, size);
