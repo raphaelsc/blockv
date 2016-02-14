@@ -104,7 +104,7 @@ public:
 
         sockfd = socket(AF_INET,SOCK_STREAM,0);
         if (sockfd == -1) {
-            perror("socket");
+            log("socket: %s", strerror(errno));
             return -1;
         }
         memset(&servaddr, 0, sizeof servaddr);
@@ -115,7 +115,7 @@ public:
 
         ret = connect(sockfd,(struct sockaddr *)&servaddr,sizeof(servaddr));
         if (ret == -1) {
-            perror("connect");
+            log("connect: %s", strerror(errno));
             close(sockfd);
             return -1;
         }
