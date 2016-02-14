@@ -137,7 +137,11 @@ static void handle_client_requests(int comm_fd, pseudo_block_device& dev) {
         }
 
         blockv_request* request = (blockv_request*) buffer;
-        assert(request->is_valid());
+        // kill connection with a client that is unable to send proper requests.
+        if (!request->is_valid()) {
+            printf("Request invalid!\n");
+            break;
+        }
 
         if (request->request == blockv_requests::READ) {
             blockv_read_request* read_request = (blockv_read_request*) request;
