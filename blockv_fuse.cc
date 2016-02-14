@@ -178,7 +178,7 @@ public:
             ret = ::read(sockfd, buf + buf_offset, remaining_bytes);
             // checks for underflow and possible failure on server, for example, server may be
             // killed in middle of operation.
-            if (!ret || ret > size) {
+            if (ret <= 0 || ret > size) {
                 return 0;
             }
             if (ret != size) {
