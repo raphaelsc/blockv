@@ -70,6 +70,15 @@ public:
 struct blockv_server_connection {
     blockv_server_info* server_info = nullptr;
     int sockfd = -1;
+
+    static void cleanup_server_connection(blockv_server_connection& server_connection) {
+        if (server_connection.server_info) {
+            delete server_connection.server_info;
+        }
+        if (server_connection.sockfd != -1) {
+            close(server_connection.sockfd);
+        }
+    }
 };
 
 struct network_block_device : public virtual_block_device {
@@ -83,12 +92,7 @@ public:
         , _target(std::string(target)) {}
 
     ~network_block_device() {
-        if (_server_connection.server_info) {
-            delete _server_connection.server_info;
-        }
-        if (_server_connection.sockfd != -1) {
-            close(_server_connection.sockfd);
-        }
+        blockv_server_connection::cleanup_server_connection(_server_connection);
     }
 
     static bool is_target_valid(const char *path) { return true; }
@@ -143,6 +147,20 @@ public:
         return 0;
     }
 
+    // When blockv fuse faces an error trying to read or write from/to blockvserver,
+    // it's important to create another socket so that subsequent requests will
+    // not be affected. Example: a read request may read irrelevant data from a
+    // previous read request that failed if the same socket is still used.
+    int reconnect_to_blockv_server() {
+        blockv_server_connection::cleanup_server_connection(_server_connection);
+        blockv_server_connection server_connection;
+        int ret = connect_to_blockv_server(server_connection, _target.data());
+        if (!ret) {
+            _server_connection = server_connection;
+        }
+        return ret;
+    }
+
     const std::string& read_target() {
         return _target;
     }
@@ -181,6 +199,7 @@ public:
         ret = ::write(_server_connection.sockfd, (const void*)&read_request_to_network, read_request_to_network.serialized_size());
         if (ret != read_request_to_network.serialized_size()) {
             log("Failed to send full read request to server: expected: %u, actual %d\n", read_request_to_network.serialized_size(), ret);
+            reconnect_to_blockv_server();
             delete response_buf;
             return 0;
         }
@@ -188,6 +207,7 @@ public:
         // Read only blockv_read_response::size to get the size of response.
         ret = read_from_server(_server_connection.sockfd, response_buf, blockv_read_response::metadata_size());
         if (ret != blockv_read_response::metadata_size()) {
+            reconnect_to_blockv_server();
             delete response_buf;
             return 0;
         }
@@ -198,6 +218,7 @@ public:
             // This also handles the corner case in which response size is bigger than expected,
             // potentially leading to a buffer overflow.
             log("Read response size: expected: %u, actual: %u\n", size, read_response->size);
+            reconnect_to_blockv_server();
             delete response_buf;
             return 0;
         }
@@ -207,6 +228,7 @@ public:
         while (remaining_bytes > 0) {
             ret = read_from_server(_server_connection.sockfd, response_buf + response_buf_offset, remaining_bytes);
             if (!ret) {
+                reconnect_to_blockv_server();
                 delete response_buf;
                 return 0;
             }
@@ -235,6 +257,7 @@ public:
         size_t written = ::write(_server_connection.sockfd, (const void*)write_request, write_request->serialized_size());
         if (written != write_request->serialized_size()) {
             log("Failed to send full write request to server: expected: %u, actual %d\n", write_request->serialized_size(), ret);
+            reconnect_to_blockv_server();
             ret = 0;
         }
 
@@ -242,6 +265,7 @@ public:
         ret = read_from_server(_server_connection.sockfd, (char*)&write_response, blockv_write_response::serialized_size());
         if (ret != blockv_write_response::serialized_size()) {
             log("Failed to get full response from server: expected: %ld, actual %d\n", blockv_write_response::serialized_size(), ret);
+            reconnect_to_blockv_server();
             ret = 0;
         }
         // FIXME: ignoring write response by the time being.
