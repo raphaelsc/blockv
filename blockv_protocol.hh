@@ -14,7 +14,7 @@
 
 struct blockv_server_info {
     uint32_t magic_value;
-    uint32_t device_size;
+    uint32_t device_size; // FIXME: extend to uint64_t.
     uint8_t read_only;
 
     blockv_server_info() = default;
