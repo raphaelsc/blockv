@@ -240,7 +240,7 @@ public:
 
     virtual ssize_t write(const char *buf, size_t size, off_t offset) {
         std::lock_guard<std::mutex> lock(_mutex);
-        size_t ret;
+        int ret;
 
         blockv_write_request* write_request = blockv_write_request::to_network(buf, size, offset);
         if (write_request == nullptr) {
@@ -252,7 +252,7 @@ public:
         if (written != write_request->serialized_size()) {
             log("Failed to send full write request to server: expected: %u, actual %d\n", write_request->serialized_size(), ret);
             reconnect_to_blockv_server();
-            ret = 0;
+            return 0;
         }
 
         blockv_write_response write_response;
