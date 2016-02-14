@@ -171,13 +171,24 @@ public:
         return _server_connection.server_info->device_size;
     }
 
-    static size_t read_from_server(int sockfd, char *buf, uint32_t size) {
-        auto ret = ::read(sockfd, buf, size);
-        if (ret == 0 || ret == -1) {
-            // handle possible failure on server, for example, server was killed in middle of operation.
-            return 0L;
+    static int read_from_server(int sockfd, char *buf, size_t size, size_t buf_offset = 0) {
+        size_t remaining_bytes = size;
+        int ret, read_bytes = 0;
+        while (remaining_bytes > 0) {
+            ret = ::read(sockfd, buf + buf_offset, remaining_bytes);
+            // checks for underflow and possible failure on server, for example, server may be
+            // killed in middle of operation.
+            if (!ret || ret > size) {
+                return 0;
+            }
+            if (ret != size) {
+                log("Failed to get full response from server: expected: %ld, actual %d\n", remaining_bytes, ret);
+            }
+            size -= ret;
+            buf_offset += ret;
+            read_bytes += ret;
         }
-        return ret;
+        return read_bytes;
     }
 
     virtual size_t read(char *buf, size_t size, off_t offset) {
@@ -217,24 +228,14 @@ public:
             return 0;
         }
 
-        int64_t remaining_bytes = read_response->size;
-        uint32_t response_buf_offset = blockv_read_response::metadata_size();
-        while (remaining_bytes > 0) {
-            ret = read_from_server(_server_connection.sockfd, response_buf.get() + response_buf_offset, remaining_bytes);
-            if (!ret) {
-                reconnect_to_blockv_server();
-                return 0;
-            }
-            if (ret != remaining_bytes) {
-                log("Failed to get full response from server: expected: %ld, actual %d\n", remaining_bytes, ret);
-            }
-            remaining_bytes -= ret;
-            response_buf_offset += ret;
+        ret = read_from_server(_server_connection.sockfd, response_buf.get(), read_response->size, blockv_read_response::metadata_size());
+        if (ret != read_response->size) {
+            log("Failed to get full response from server: expected: %ld, actual %d\n", read_response->size, ret);
+            reconnect_to_blockv_server();
+            return 0;
         }
-        assert(remaining_bytes == 0);
-
         memcpy(buf, (const char *)read_response->buf, read_response->size);
-        return read_response->size;
+        return ret;
     }
 
     virtual size_t write(const char *buf, size_t size, off_t offset) {
