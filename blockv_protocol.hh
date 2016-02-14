@@ -141,11 +141,8 @@ struct blockv_write_request {
 
     static blockv_write_request* to_network(const char *buf, uint32_t buf_size, uint32_t off) {
         size_t bytes_to_allocate = serialized_size(buf_size);
-        blockv_write_request* to;
-
-        try {
-            to = (blockv_write_request*) new char[bytes_to_allocate];
-        } catch (...) {
+        blockv_write_request* to = (blockv_write_request*) new (std::nothrow) char[bytes_to_allocate];
+        if (!to) {
             return nullptr;
         }
 

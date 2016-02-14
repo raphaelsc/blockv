@@ -244,7 +244,6 @@ public:
 
         blockv_write_request* write_request = blockv_write_request::to_network(buf, size, offset);
         if (write_request == nullptr) {
-            delete (char *) write_request;
             return 0;
         }
 
@@ -252,6 +251,7 @@ public:
         if (written != write_request->serialized_size()) {
             log("Failed to send full write request to server: expected: %u, actual %d\n", write_request->serialized_size(), ret);
             reconnect_to_blockv_server();
+            delete (char *) write_request;
             return 0;
         }
 
@@ -260,7 +260,8 @@ public:
         if (ret != blockv_write_response::serialized_size()) {
             log("Failed to get full response from server: expected: %ld, actual %d\n", blockv_write_response::serialized_size(), ret);
             reconnect_to_blockv_server();
-            ret = 0;
+            delete (char *) write_request;
+            return 0;
         }
         // FIXME: ignoring write response by the time being.
 
