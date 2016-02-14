@@ -28,8 +28,8 @@ struct virtual_block_device {
 
     virtual bool read_only() = 0;
     virtual size_t size() = 0;
-    virtual size_t read(char *buf, size_t size, off_t offset) = 0;
-    virtual size_t write(const char *buf, size_t size, off_t offset) = 0;
+    virtual ssize_t read(char *buf, size_t size, off_t offset) = 0;
+    virtual ssize_t write(const char *buf, size_t size, off_t offset) = 0;
 };
 
 struct memory_based_block_device : public virtual_block_device {
@@ -57,11 +57,11 @@ public:
         return _block_device_size;
     }
 
-    virtual size_t read(char *buf, size_t size, off_t offset) {
+    virtual ssize_t read(char *buf, size_t size, off_t offset) {
         memcpy(buf, (const char *)_block_device_content + offset, size);
         return size;
     }
-    virtual size_t write(const char *buf, size_t size, off_t offset) {
+    virtual ssize_t write(const char *buf, size_t size, off_t offset) {
         memcpy((char *)_block_device_content + offset, buf, size);
         return size;
     }
@@ -191,7 +191,7 @@ public:
         return read_bytes;
     }
 
-    virtual size_t read(char *buf, size_t size, off_t offset) {
+    virtual ssize_t read(char *buf, size_t size, off_t offset) {
         // TODO: avoid this lock somehow. that's needed for response to correspond the request issued to the server.
         std::lock_guard<std::mutex> lock(_mutex);
         int ret;
@@ -238,7 +238,7 @@ public:
         return ret;
     }
 
-    virtual size_t write(const char *buf, size_t size, off_t offset) {
+    virtual ssize_t write(const char *buf, size_t size, off_t offset) {
         std::lock_guard<std::mutex> lock(_mutex);
         size_t ret;
 
