@@ -98,6 +98,26 @@ public:
 
     static bool is_target_valid(const char *path) { return true; }
 
+    static int read_from_server(int sockfd, char *buf, size_t size, size_t buf_offset = 0) {
+        size_t remaining_bytes = size;
+        int ret, read_bytes = 0;
+        while (remaining_bytes > 0) {
+            ret = ::read(sockfd, buf + buf_offset, remaining_bytes);
+            // checks for underflow and possible failure on server, for example, server may be
+            // killed in middle of operation.
+            if (ret <= 0 || ret > size) {
+                return 0;
+            }
+            if (ret != size) {
+                log("Failed to get full response from server: expected: %ld, actual %d\n", remaining_bytes, ret);
+            }
+            size -= ret;
+            buf_offset += ret;
+            read_bytes += ret;
+        }
+        return read_bytes;
+    }
+
     static int connect_to_blockv_server(blockv_server_connection& server_connection, const char *target) {
         int sockfd, ret;
         struct sockaddr_in servaddr;
@@ -126,7 +146,7 @@ public:
             close(sockfd);
             return -1;
         }
-        ret = ::read(sockfd, buf, blockv_server_info_size);
+        ret = read_from_server(sockfd, buf, blockv_server_info_size);
         if (ret != blockv_server_info_size) {
             close(sockfd);
             delete buf;
@@ -169,26 +189,6 @@ public:
     }
     virtual size_t size() {
         return _server_connection.server_info->device_size;
-    }
-
-    static int read_from_server(int sockfd, char *buf, size_t size, size_t buf_offset = 0) {
-        size_t remaining_bytes = size;
-        int ret, read_bytes = 0;
-        while (remaining_bytes > 0) {
-            ret = ::read(sockfd, buf + buf_offset, remaining_bytes);
-            // checks for underflow and possible failure on server, for example, server may be
-            // killed in middle of operation.
-            if (ret <= 0 || ret > size) {
-                return 0;
-            }
-            if (ret != size) {
-                log("Failed to get full response from server: expected: %ld, actual %d\n", remaining_bytes, ret);
-            }
-            size -= ret;
-            buf_offset += ret;
-            read_bytes += ret;
-        }
-        return read_bytes;
     }
 
     virtual ssize_t read(char *buf, size_t size, off_t offset) {
