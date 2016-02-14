@@ -19,6 +19,7 @@
 #include <utility>
 #include <memory>
 #include <limits>
+#include <shared_mutex>
 #include "blockv_protocol.hh"
 
 #define BLOCKV_SERVER_PORT 22000
@@ -28,6 +29,7 @@ private:
     int _fd;
     uint32_t _pseudo_block_device_size; // FIXME: extend to uint64_t.
     bool _read_only;
+    std::shared_timed_mutex _mutex;
 
     uint32_t get_actual_size(uint32_t size, uint32_t offset) const {
         uint32_t actual_size = 0;
@@ -62,7 +64,9 @@ public:
         int ret = 0;
 
         size = get_actual_size(size, offset);
+        _mutex.lock_shared();
         ret = pread(_fd, buf, size, offset);
+        _mutex.unlock_shared();
         if (ret == -1) {
             perror("pread");
             ret = 0;
@@ -74,7 +78,9 @@ public:
         int ret = 0;
 
         size = get_actual_size(size, offset);
+        _mutex.lock();
         ret = pwrite(_fd, buf, size, offset);
+        _mutex.unlock();
         if (ret == -1) {
             perror("pwrite");
             ret = 0;

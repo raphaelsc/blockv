@@ -11,7 +11,7 @@ Getting started
 
 - Compile project with:
 g++ --std=c++14 `pkg-config fuse --cflags --libs` blockv_fuse.cc -o blockv_fuse;
-g++ --std=c++14 blockv_server.cc -o blockv_server;
+g++ --std=c++14 blockv_server.cc -o blockv_server -lpthread;
 
 NOTE: There is no makefile because I am lazy, but I will write one as soon as possible.
 NOTE: blockv_fuse depends on FUSE.
