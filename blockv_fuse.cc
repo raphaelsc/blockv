@@ -247,25 +247,24 @@ public:
             return 0;
         }
 
-        size_t written = ::write(_server_connection.sockfd, (const void*)write_request, write_request->serialized_size());
+        ssize_t written = ::write(_server_connection.sockfd, (const void*)write_request, write_request->serialized_size());
         if (written != write_request->serialized_size()) {
             log("Failed to send full write request to server: expected: %u, actual %d\n", write_request->serialized_size(), ret);
             reconnect_to_blockv_server();
             delete (char *) write_request;
             return 0;
         }
+        delete (char *) write_request;
 
         blockv_write_response write_response;
         ret = read_from_server(_server_connection.sockfd, (char*)&write_response, blockv_write_response::serialized_size());
         if (ret != blockv_write_response::serialized_size()) {
             log("Failed to get full response from server: expected: %ld, actual %d\n", blockv_write_response::serialized_size(), ret);
             reconnect_to_blockv_server();
-            delete (char *) write_request;
             return 0;
         }
         // FIXME: ignoring write response by the time being.
 
-        delete (char *) write_request;
         return size;
     }
 };
