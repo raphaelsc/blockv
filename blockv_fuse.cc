@@ -121,10 +121,8 @@ public:
         }
 
         size_t blockv_server_info_size = blockv_server_info::serialized_size();
-        char *buf = nullptr;
-        try {
-            buf = new char[blockv_server_info_size];
-        } catch(...) {
+        char *buf = new (std::nothrow) char[blockv_server_info_size];
+        if (!buf) {
             close(sockfd);
             return -1;
         }
