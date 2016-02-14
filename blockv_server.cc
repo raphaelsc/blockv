@@ -18,6 +18,7 @@
 #include <stdlib.h>
 #include <utility>
 #include <memory>
+#include <limits>
 #include "blockv_protocol.hh"
 
 #define BLOCKV_SERVER_PORT 22000
@@ -111,6 +112,10 @@ static std::unique_ptr<pseudo_block_device> setup_pseudo_block_device(const char
         exit(1);
     }
     pseudo_block_device_size = sb.st_size;
+    if (pseudo_block_device_size > std::numeric_limits<uint32_t>::max()) {
+        printf("Device size limited to 2^32 bytes. We will add support to 2^64 bytes soon.\n", std::numeric_limits<uint32_t>::max());
+        exit(1);
+    }
     printf("Pseudo block device size: %u bytes\n", pseudo_block_device_size);
     printf("Read only? %s\n", read_only ? "yes" : "no");
 
