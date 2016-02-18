@@ -1,0 +1,16 @@
+// blockv:
+
+valid target (created for network block device) and start using it instead of hardcoded ip:port.
+start using getopt in server to work with multiple options
+change server to work with multiple ports
+convert device_size to uint64_t
+add alignment as uint16_t (prevent unaligned write / read in server and client)
+move common blockv code (example: connect_to_blockv_server(), read_from_server()) to blockv_utils.cc and blockv_utils.hh
+rewrite tests/blockv_server_client.cc using moved common code and rename it to tests/blockv_basic_test.cc
+add support to shutdown server by handling the signal sigterm
+create a script tests.py that will start server, call tests/blockv_basic_test.cc, and stop server with sigterm.
+
+// blockv future:
+
+add compression (lz4 from zlib); check performance improvement with a benchmark written by ourselves.
+
