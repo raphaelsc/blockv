@@ -6,6 +6,7 @@ blockv project is composed of blockv server and blockv FUSE (client).
 blockv server is used to export a block device to the outside world. blockv FUSE is used to import a block device exported by a blockv server.
 
 With blockv project, it's easy to mount locally a file system stored in a block device of a remote computer.
+
 With blockv FUSE, it's easy to keep access to a large number of block devices that are exported by respective blockv servers.
 
 This project is based on the concept of network block device. For further information:
