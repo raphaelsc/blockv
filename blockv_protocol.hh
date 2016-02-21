@@ -9,12 +9,14 @@
 #define PROTOCOL_H
 
 #include <arpa/inet.h>
+#include <endian.h>
 
 #define BLOCKV_MAGIC_VALUE 0xB0B0B0B0
 
 struct blockv_server_info {
     uint32_t magic_value;
-    uint32_t device_size; // FIXME: extend to uint64_t.
+    uint32_t padding;
+    uint64_t device_size;
     uint8_t read_only;
 
     blockv_server_info() = default;
@@ -24,20 +26,20 @@ struct blockv_server_info {
     }
 
     static size_t serialized_size() {
-        return sizeof(magic_value) + sizeof(device_size) + sizeof(read_only);
+        return sizeof(magic_value) + sizeof(padding) + sizeof(device_size) + sizeof(read_only);
     }
 
-    static blockv_server_info to_network(uint32_t device_size, bool read_only) {
+    static blockv_server_info to_network(uint64_t device_size, bool read_only) {
         blockv_server_info to;
         to.magic_value = htonl(BLOCKV_MAGIC_VALUE);
-        to.device_size = htonl(device_size);
+        to.device_size = htobe64(device_size);
         to.read_only = uint8_t(read_only);
         return to;
     }
 
     static void to_host(blockv_server_info& server_info) {
         server_info.magic_value = ntohl(server_info.magic_value);
-        server_info.device_size = ntohl(server_info.device_size);
+        server_info.device_size = be64toh(server_info.device_size);
     }
 } __attribute__((packed));
 

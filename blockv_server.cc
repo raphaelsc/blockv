@@ -27,7 +27,7 @@
 struct pseudo_block_device {
 private:
     int _fd;
-    uint32_t _pseudo_block_device_size; // FIXME: extend to uint64_t.
+    uint64_t _pseudo_block_device_size;
     bool _read_only;
     std::shared_timed_mutex _mutex;
 
@@ -43,7 +43,7 @@ private:
     }
 public:
     pseudo_block_device() = delete;
-    pseudo_block_device(int fd, uint32_t size, bool read_only)
+    pseudo_block_device(int fd, uint64_t size, bool read_only)
         : _fd(fd)
         , _pseudo_block_device_size(size)
         , _read_only(read_only) {}
@@ -56,7 +56,7 @@ public:
         return _read_only;
     }
 
-    uint32_t size() const {
+    uint64_t size() const {
         return _pseudo_block_device_size;
     }
 
@@ -91,7 +91,7 @@ public:
 
 static std::unique_ptr<pseudo_block_device> setup_pseudo_block_device(const char *pseudo_block_device_path, bool read_only) {
     int pseudo_block_device_fd = -1;
-    uint32_t pseudo_block_device_size = 0; // TODO: extend to uint64_t; need protocol support.
+    uint64_t pseudo_block_device_size = 0;
 
     printf("Pseudo block device name: %s\n", pseudo_block_device_path);
 
@@ -112,16 +112,13 @@ static std::unique_ptr<pseudo_block_device> setup_pseudo_block_device(const char
     }
 
     // TODO: we should probably use flock on the file representing disk image.
-    pseudo_block_device_fd = open(pseudo_block_device_path, ((read_only) ? O_RDONLY : O_RDWR) | O_SYNC);
+    pseudo_block_device_fd = open(pseudo_block_device_path, ((read_only) ? O_RDONLY : O_RDWR) | O_SYNC | O_LARGEFILE);
     if (pseudo_block_device_fd == -1) {
         perror("open");
         exit(1);
     }
     pseudo_block_device_size = sb.st_size;
-    if (pseudo_block_device_size > std::numeric_limits<uint32_t>::max()) {
-        printf("Device size limited to 2^32 bytes. We will add support to 2^64 bytes soon.\n", std::numeric_limits<uint32_t>::max());
-        exit(1);
-    }
+
     printf("Pseudo block device size: %u bytes\n", pseudo_block_device_size);
     printf("Read only? %s\n", read_only ? "yes" : "no");
 

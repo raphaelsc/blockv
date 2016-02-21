@@ -27,7 +27,7 @@ struct virtual_block_device {
     virtual ~virtual_block_device(){}
 
     virtual bool read_only() = 0;
-    virtual size_t size() = 0;
+    virtual uint64_t size() = 0;
     virtual ssize_t read(char *buf, size_t size, off_t offset) = 0;
     virtual ssize_t write(const char *buf, size_t size, off_t offset) = 0;
 };
@@ -35,7 +35,7 @@ struct virtual_block_device {
 struct memory_based_block_device : public virtual_block_device {
 private:
     void* _block_device_content = nullptr;
-    size_t _block_device_size = 0;
+    uint64_t _block_device_size = 0;
 
 public:
     ~memory_based_block_device() {
@@ -53,7 +53,7 @@ public:
         return false;
     }
 
-    virtual size_t size() {
+    virtual uint64_t size() {
         return _block_device_size;
     }
 
@@ -187,7 +187,7 @@ public:
     virtual bool read_only() {
         return _server_connection.server_info->read_only;
     }
-    virtual size_t size() {
+    virtual uint64_t size() {
         return _server_connection.server_info->device_size;
     }
 
