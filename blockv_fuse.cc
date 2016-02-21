@@ -99,7 +99,7 @@ public:
     static bool is_target_valid(const char *path) { return true; }
 
     static int read_from_server(int sockfd, char *buf, size_t size, size_t buf_offset = 0) {
-        size_t remaining_bytes = size;
+        int64_t remaining_bytes = size;
         int ret, read_bytes = 0;
         while (remaining_bytes > 0) {
             ret = ::read(sockfd, buf + buf_offset, remaining_bytes);
@@ -111,7 +111,7 @@ public:
             if (ret != size) {
                 log("Failed to get full response from server: expected: %ld, actual %d\n", remaining_bytes, ret);
             }
-            size -= ret;
+            remaining_bytes -= ret;
             buf_offset += ret;
             read_bytes += ret;
         }
