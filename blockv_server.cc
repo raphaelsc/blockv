@@ -8,6 +8,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/socket.h>
+#include <sys/ioctl.h>
 #include <fcntl.h>
 #include <netdb.h>
 #include <stdio.h>
@@ -20,38 +21,39 @@
 #include <memory>
 #include <limits>
 #include <shared_mutex>
+#include <linux/fs.h>
 #include "blockv_protocol.hh"
 
 #define BLOCKV_SERVER_PORT 22000
 
-struct pseudo_block_device {
+struct block_device {
 private:
     int _fd;
-    uint64_t _pseudo_block_device_size;
+    uint64_t _block_device_size;
     bool _read_only;
     std::shared_timed_mutex _mutex;
 
     uint32_t get_actual_size(uint32_t size, uint64_t offset) const {
         uint32_t actual_size = 0;
-        if (offset < _pseudo_block_device_size) {
+        if (offset < _block_device_size) {
             // Do nothing if offset + size causes integer overflow.
             if (offset + size < offset) {
                 return 0;
             }
-            if (offset + size > _pseudo_block_device_size) {
-                size = _pseudo_block_device_size - offset;
+            if (offset + size > _block_device_size) {
+                size = _block_device_size - offset;
             }
             actual_size = size;
         }
         return actual_size;
     }
 public:
-    pseudo_block_device() = delete;
-    pseudo_block_device(int fd, uint64_t size, bool read_only)
+    block_device() = delete;
+    block_device(int fd, uint64_t size, bool read_only)
         : _fd(fd)
-        , _pseudo_block_device_size(size)
+        , _block_device_size(size)
         , _read_only(read_only) {}
-    ~pseudo_block_device() {
+    ~block_device() {
         printf("Closing disk image...\n");
         close(_fd);
     }
@@ -61,7 +63,7 @@ public:
     }
 
     uint64_t size() const {
-        return _pseudo_block_device_size;
+        return _block_device_size;
     }
 
     int read(char* buf, uint32_t size, uint64_t offset) {
@@ -93,44 +95,47 @@ public:
     }
 };
 
-static std::unique_ptr<pseudo_block_device> setup_pseudo_block_device(const char *pseudo_block_device_path, bool read_only) {
-    int pseudo_block_device_fd = -1;
-    uint64_t pseudo_block_device_size = 0;
+static std::unique_ptr<block_device> setup_block_device(const char *block_device_path, bool read_only) {
+    int device_fd = -1;
+    uint64_t device_size = 0;
 
-    printf("Pseudo block device name: %s\n", pseudo_block_device_path);
+    printf("Block device name: %s\n", block_device_path);
 
     struct stat sb;
-    if (stat(pseudo_block_device_path, &sb) == -1) {
-        printf("Unable to get status of the file %s: %s\n", pseudo_block_device_path, strerror(errno));
+    if (stat(block_device_path, &sb) == -1) {
+        printf("Unable to get status of the file %s: %s\n", block_device_path, strerror(errno));
+        exit(1);
+    }
+
+    // TODO: we should probably use flock on the file representing disk image.
+    device_fd = open(block_device_path, ((read_only) ? O_RDONLY : O_RDWR) | O_SYNC | O_LARGEFILE);
+    if (device_fd == -1) {
+        perror("open");
         exit(1);
     }
 
     switch (sb.st_mode & S_IFMT) {
     case S_IFREG:
+        device_size = sb.st_size;
         break;
-    case S_IFBLK:
-        printf("WARNING: It's not safe to use block device. Use a disk image instead.\n");
-    default:
+    case S_IFBLK: {
+        int ret = ::ioctl(device_fd, BLKGETSIZE64, &device_size);
+        assert(ret == 0);
+        printf("WARNING: It's not safe to use block device. Use a disk image instead (created with qemu-img for example).\n");
+        break;
+    } default:
         printf("Only regular file is allowed at the moment!\n");
         exit(1);
     }
 
-    // TODO: we should probably use flock on the file representing disk image.
-    pseudo_block_device_fd = open(pseudo_block_device_path, ((read_only) ? O_RDONLY : O_RDWR) | O_SYNC | O_LARGEFILE);
-    if (pseudo_block_device_fd == -1) {
-        perror("open");
-        exit(1);
-    }
-    pseudo_block_device_size = sb.st_size;
-
-    printf("Pseudo block device size: %u bytes\n", pseudo_block_device_size);
+    printf("Block device size: %lu bytes (%.2fG)\n", device_size, (double)device_size/(1024*1024*1024));
     printf("Read only? %s\n", read_only ? "yes" : "no");
 
-    std::unique_ptr<pseudo_block_device> dev(new pseudo_block_device(pseudo_block_device_fd, pseudo_block_device_size, read_only));
+    std::unique_ptr<block_device> dev(new block_device(device_fd, device_size, read_only));
     return std::move(dev);
 }
 
-static void handle_client_requests(int comm_fd, pseudo_block_device& dev) {
+static void handle_client_requests(int comm_fd, block_device& dev) {
     char buffer[4096];
     int ret;
 
@@ -241,7 +246,7 @@ int main(int argc, const char **argv) {
         read_only = (std::string(argv[2]) == "--read-only");
     }
 
-    std::unique_ptr<pseudo_block_device> dev = setup_pseudo_block_device(argv[1], read_only);
+    std::unique_ptr<block_device> dev = setup_block_device(argv[1], read_only);
 
     listen_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (listen_fd == -1) {
