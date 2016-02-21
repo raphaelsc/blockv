@@ -1,9 +1,10 @@
+NOTE: Feel free to add something you would like to see supported by blockv to this file.
+
 // blockv:
 
 valid target (created for network block device) and start using it instead of hardcoded ip:port.
 start using getopt in server to work with multiple options
 change server to work with multiple ports
-convert device_size to uint64_t
 add alignment as uint16_t (prevent unaligned write / read in server and client)
 move common blockv code (example: connect_to_blockv_server(), read_from_server()) to blockv_utils.cc and blockv_utils.hh
 rewrite tests/blockv_server_client.cc using moved common code and rename it to tests/blockv_basic_test.cc
