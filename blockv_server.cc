@@ -31,9 +31,13 @@ private:
     bool _read_only;
     std::shared_timed_mutex _mutex;
 
-    uint32_t get_actual_size(uint32_t size, uint32_t offset) const {
+    uint32_t get_actual_size(uint32_t size, uint64_t offset) const {
         uint32_t actual_size = 0;
         if (offset < _pseudo_block_device_size) {
+            // Do nothing if offset + size causes integer overflow.
+            if (offset + size < offset) {
+                return 0;
+            }
             if (offset + size > _pseudo_block_device_size) {
                 size = _pseudo_block_device_size - offset;
             }
@@ -60,7 +64,7 @@ public:
         return _pseudo_block_device_size;
     }
 
-    int read(char* buf, uint32_t size, uint32_t offset) {
+    int read(char* buf, uint32_t size, uint64_t offset) {
         int ret = 0;
 
         size = get_actual_size(size, offset);
@@ -74,7 +78,7 @@ public:
         return ret;
     }
 
-    int write(const char* buf, uint32_t size, uint32_t offset) {
+    int write(const char* buf, uint32_t size, uint64_t offset) {
         int ret = 0;
 
         size = get_actual_size(size, offset);

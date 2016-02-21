@@ -57,7 +57,7 @@ enum blockv_requests : uint8_t {
 struct blockv_read_request {
     uint8_t request;
     uint32_t size;
-    uint32_t offset;
+    uint64_t offset;
 
     blockv_read_request() = default;
 
@@ -65,17 +65,17 @@ struct blockv_read_request {
         return sizeof(request) + sizeof(size) + sizeof(offset);
     }
 
-    static blockv_read_request to_network(uint32_t size, uint32_t offset) {
+    static blockv_read_request to_network(uint32_t size, uint64_t offset) {
         blockv_read_request to;
         to.request = blockv_requests::READ;
         to.size = htonl(size);
-        to.offset = htonl(offset);
+        to.offset = htobe64(offset);
         return to;
     }
 
     static void to_host(blockv_read_request& read_request) {
         read_request.size = ntohl(read_request.size);
-        read_request.offset = ntohl(read_request.offset);
+        read_request.offset = be64toh(read_request.offset);
     }
 } __attribute__((packed));
 
@@ -131,20 +131,20 @@ struct blockv_read_response {
 struct blockv_write_request {
     uint8_t request;
     uint32_t size;
-    uint32_t offset;
+    uint64_t offset;
     char buf[];
 
     blockv_write_request() = delete;
 
     static size_t serialized_size(uint32_t buf_size) {
-        return sizeof(uint8_t) + sizeof(uint32_t) + sizeof(uint32_t) + buf_size;
+        return sizeof(request) + sizeof(size) + sizeof(offset) + buf_size;
     }
 
     size_t serialized_size() {
         return serialized_size(ntohl(size));
     }
 
-    static blockv_write_request* to_network(const char *buf, uint32_t buf_size, uint32_t off) {
+    static blockv_write_request* to_network(const char *buf, uint32_t buf_size, uint64_t off) {
         size_t bytes_to_allocate = serialized_size(buf_size);
         blockv_write_request* to = (blockv_write_request*) new (std::nothrow) char[bytes_to_allocate];
         if (!to) {
@@ -153,14 +153,14 @@ struct blockv_write_request {
 
         to->request = blockv_requests::WRITE;
         to->size = htonl(buf_size);
-        to->offset = htonl(off);
+        to->offset = htobe64(off);
         memcpy(to->buf, buf, buf_size);
         return to;
     }
 
     static void to_host(blockv_write_request& write_request) {
         write_request.size = ntohl(write_request.size);
-        write_request.offset = ntohl(write_request.offset);
+        write_request.offset = be64toh(write_request.offset);
     }
 } __attribute__((packed));
 
