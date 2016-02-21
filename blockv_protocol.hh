@@ -12,12 +12,14 @@
 #include <endian.h>
 
 #define BLOCKV_MAGIC_VALUE 0xB0B0B0B0
+#define BLOCKV_PROTOCOL_VERSION 1
 
 struct blockv_server_info {
     uint32_t magic_value;
-    uint32_t padding;
     uint64_t device_size;
+    uint8_t version = BLOCKV_PROTOCOL_VERSION;
     uint8_t read_only;
+    uint8_t unused[2];
 
     blockv_server_info() = default;
 
@@ -26,7 +28,8 @@ struct blockv_server_info {
     }
 
     static size_t serialized_size() {
-        return sizeof(magic_value) + sizeof(padding) + sizeof(device_size) + sizeof(read_only);
+        return sizeof(magic_value) + sizeof(device_size) + sizeof(version) +
+            sizeof(read_only) + sizeof(unused);
     }
 
     static blockv_server_info to_network(uint64_t device_size, bool read_only) {
