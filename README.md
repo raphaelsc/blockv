@@ -64,7 +64,7 @@ Read-only mode (write request is disallowed):
 
 1) Compile project for client side:
 ```
-g++ --std=c++14 blockv_server.cc -o blockv_server -lpthread;
+g++ --std=c++14 `pkg-config fuse --cflags --libs` blockv_fuse.cc -o blockv_fuse;
 ```
 
 2) Mount blockv:
