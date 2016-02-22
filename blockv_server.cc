@@ -99,8 +99,6 @@ static std::unique_ptr<block_device> setup_block_device(const char *block_device
     int device_fd = -1;
     uint64_t device_size = 0;
 
-    printf("Block device name: %s\n", block_device_path);
-
     struct stat sb;
     if (stat(block_device_path, &sb) == -1) {
         printf("Unable to get status of the file %s: %s\n", block_device_path, strerror(errno));
@@ -121,13 +119,18 @@ static std::unique_ptr<block_device> setup_block_device(const char *block_device
     case S_IFBLK: {
         int ret = ::ioctl(device_fd, BLKGETSIZE64, &device_size);
         assert(ret == 0);
-        printf("WARNING: It's not safe to use block device. Use a disk image instead (created with qemu-img for example).\n");
+        if (!read_only) {
+            printf("WARNING: It's not safe to export a block device in read-write mode because a file system stored" \
+                " in it could be easily corrupted after client requests. Proceed at your own risk. It's recommended" \
+                " to use the --read-only program option when exporting a block device.\n");
+        }
         break;
     } default:
         printf("Only regular file is allowed at the moment!\n");
         exit(1);
     }
 
+    printf("Block device name: %s\n", block_device_path);
     printf("Block device size: %lu bytes (%.2fG)\n", device_size, (double)device_size/(1024*1024*1024));
     printf("Read only? %s\n", read_only ? "yes" : "no");
 
